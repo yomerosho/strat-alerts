@@ -113,6 +113,31 @@ def detect_trigger(df: pd.DataFrame, current_price: float) -> Optional[str]:
     return None
 
 
+def bar_period_has_closed(bar_time: pd.Timestamp, timeframe_label: str) -> bool:
+    """
+    Whether a bar's own time period has actually finished in real time.
+
+    The most recent bar Alpaca returns isn't always still "forming" -- if
+    the scan runs after market close, that day's Daily bar (or this 4H
+    bucket) is already complete. Treating it as forming anyway silently
+    discards a fully real bar and makes everything look one period stale
+    (e.g. always showing yesterday's date on the Daily tab, even at 10pm).
+    """
+    now_et = pd.Timestamp.now(tz="US/Eastern")
+    if timeframe_label == "4H":
+        return now_et >= bar_time + pd.Timedelta(hours=4)
+    if timeframe_label == "1D":
+        # Alpaca's daily bar timestamp lands at midnight ET of the trading
+        # day; that session's data is final once the 16:00 ET close passes.
+        close_time = bar_time.replace(hour=16, minute=0, second=0, microsecond=0)
+        return now_et >= close_time
+    if timeframe_label == "1W":
+        return now_et.isocalendar()[:2] > bar_time.isocalendar()[:2]
+    if timeframe_label == "1M":
+        return (now_et.year, now_et.month) > (bar_time.year, bar_time.month)
+    return True
+
+
 def resample_to_4h(hourly_df: pd.DataFrame) -> pd.DataFrame:
     """
     Build 4-hour bars anchored to market open (9:30 ET) from 1-hour bars.
@@ -198,11 +223,27 @@ class StratScanner:
             return None
 
         labeled = label_bars(df)
-        completed = labeled.iloc[:-1]  # last row is the still-forming bar
-        forming = labeled.iloc[-1]
+        last_bar_time = labeled.index[-1]
+
+        if bar_period_has_closed(last_bar_time, timeframe_label):
+            # The most recent bar is already final -- include it as the
+            # latest completed bar rather than discarding it. There's no
+            # live intrabar price beyond it (we only have historical bars
+            # here), so there's nothing new to compare for a trigger.
+            completed = labeled
+            current_price = float(completed["close"].iloc[-1])
+            trigger = None
+        else:
+            completed = labeled.iloc[:-1]
+            forming = labeled.iloc[-1]
+            current_price = float(forming["close"])
+            trigger = detect_trigger(completed, current_price=current_price)
+
+        if len(completed) < 4:
+            logger.warning("Not enough completed %s bars for %s to evaluate.", timeframe_label, symbol)
+            return None
 
         last_three = tuple(completed["strat_label"].iloc[-3:].fillna("?"))
-        trigger = detect_trigger(completed, current_price=forming["close"])
 
         return StratState(
             symbol=symbol,
@@ -211,6 +252,6 @@ class StratScanner:
             last_three_labels=last_three,  # type: ignore[arg-type]
             last_completed_high=float(completed["high"].iloc[-1]),
             last_completed_low=float(completed["low"].iloc[-1]),
-            current_price=float(forming["close"]),
+            current_price=current_price,
             trigger=trigger,
         )
