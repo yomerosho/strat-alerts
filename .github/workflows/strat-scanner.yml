@@ -2,14 +2,16 @@ name: Strat Scanner
 
 on:
   schedule:
-    # Every 5 minutes -- the fastest practical interval for free GitHub
-    # Actions cron. Note: GitHub doesn't guarantee exact timing; during
-    # high platform load this can slip by a few minutes. For a strategy
-    # where you're in and out within 30 minutes, treat this as a
-    # confluence/heads-up signal to go check your 5m/15m chart yourself --
-    # not a guaranteed instant trigger. If you need tighter timing, the
-    # VPS continuous-loop mode (see README) can poll every 30-60 seconds.
-    - cron: "*/5 * * * *"
+    # Every 5 minutes, but only Mon-Fri, roughly 7:00 AM - 4:00 PM ET
+    # (premarket through market close). GitHub Actions cron is fixed UTC
+    # and doesn't auto-adjust for daylight saving, so this range is the
+    # UNION of both DST cases -- it'll run an extra hour on one edge
+    # depending on the season (e.g. starting at 6 AM ET instead of 7 AM
+    # during EST, or running until 5 PM ET instead of 4 PM during EDT).
+    # Harmless -- just a few extra low-value runs, not missed coverage.
+    # Doesn't account for market holidays; those runs just won't find
+    # anything new to alert on.
+    - cron: "*/5 11-21 * * 1-5"
   workflow_dispatch: {}  # lets you click "Run workflow" manually in the Actions tab
 
 permissions:
