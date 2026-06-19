@@ -113,6 +113,13 @@ class Config:
     # will cause 403 errors.
     alpaca_data_feed: str = field(default_factory=lambda: (os.getenv("ALPACA_DATA_FEED") or "iex").lower())
 
+    # Minimum minutes between alerts for the SAME symbol, even if the
+    # confluence state changes again in between. Prevents flapping (price
+    # chopping right at the trigger level: fires, pulls back, fires again)
+    # from spamming you every few minutes. A genuinely new confluence
+    # forming after this window still alerts normally.
+    alert_cooldown_minutes: int = field(default_factory=lambda: int(os.getenv("ALERT_COOLDOWN_MINUTES") or "10"))
+
     # --- Misc ---
     log_level: str = field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))
 

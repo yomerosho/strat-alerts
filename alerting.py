@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -21,7 +22,18 @@ logger = logging.getLogger("strat_scanner.alerting")
 
 class StateStore:
     """Persists the last alerted setup-key per (symbol, timeframe) in SQLite,
-    so the debounce survives restarts -- not just in-memory state."""
+    so the debounce survives restarts -- not just in-memory state.
+
+    Two separate things are tracked:
+    - setup_key / updated_at: the latest seen state, updated every cycle.
+      Used to detect "did anything change since last time" (the debounce).
+    - last_alert_at: only updated when an alert is actually SENT. Used for
+      the cooldown, which is a different concept from debounce -- it
+      suppresses rapid flapping (the same symbol crossing its trigger
+      level back and forth) even though each flap technically counts as
+      "a change," without blocking a genuinely new setup once enough time
+      has passed.
+    """
 
     def __init__(self, db_path: Path):
         self.db_path = db_path
@@ -36,10 +48,16 @@ class StateStore:
                     timeframe TEXT NOT NULL,
                     setup_key TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
+                    last_alert_at TEXT,
                     PRIMARY KEY (symbol, timeframe)
                 )
                 """
             )
+            # Migration for databases created before last_alert_at existed.
+            try:
+                conn.execute("ALTER TABLE last_state ADD COLUMN last_alert_at TEXT")
+            except sqlite3.OperationalError:
+                pass  # column already exists
 
     @contextmanager
     def _conn(self):
@@ -68,6 +86,31 @@ class StateStore:
                 DO UPDATE SET setup_key = excluded.setup_key, updated_at = excluded.updated_at
                 """,
                 (symbol, timeframe, setup_key),
+            )
+
+    def minutes_since_last_alert(self, symbol: str, timeframe: str) -> Optional[float]:
+        """Minutes since an alert was actually sent for this symbol, or
+        None if one has never been sent."""
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT last_alert_at FROM last_state WHERE symbol = ? AND timeframe = ?",
+                (symbol, timeframe),
+            ).fetchone()
+            if not row or not row[0]:
+                return None
+            last_alert = datetime.fromisoformat(row[0])
+            return (datetime.utcnow() - last_alert).total_seconds() / 60
+
+    def record_alert_sent(self, symbol: str, timeframe: str) -> None:
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO last_state (symbol, timeframe, setup_key, updated_at, last_alert_at)
+                VALUES (?, ?, '', datetime('now'), datetime('now'))
+                ON CONFLICT(symbol, timeframe)
+                DO UPDATE SET last_alert_at = excluded.last_alert_at
+                """,
+                (symbol, timeframe),
             )
 
 

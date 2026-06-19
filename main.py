@@ -99,10 +99,19 @@ async def evaluate_symbol(
     last_key = store.get_last_setup_key(symbol, "CONFLUENCE")
     if setup_key != last_key:
         if entry_signal is not None:
-            entry_tf, trigger = entry_signal
-            message = format_confluence_alert(symbol, ftfc, entry_tf, trigger, states, CONFIG.ftfc_timeframes)
-            logger.info("Confluence alert for %s: %s", symbol, setup_key)
-            await alert_manager.send(message)
+            minutes_since = store.minutes_since_last_alert(symbol, "CONFLUENCE")
+            in_cooldown = minutes_since is not None and minutes_since < CONFIG.alert_cooldown_minutes
+            if in_cooldown:
+                logger.info(
+                    "Suppressing alert for %s (cooldown: %.1f/%d min) -- %s",
+                    symbol, minutes_since, CONFIG.alert_cooldown_minutes, setup_key,
+                )
+            else:
+                entry_tf, trigger = entry_signal
+                message = format_confluence_alert(symbol, ftfc, entry_tf, trigger, states, CONFIG.ftfc_timeframes)
+                logger.info("Confluence alert for %s: %s", symbol, setup_key)
+                await alert_manager.send(message)
+                store.record_alert_sent(symbol, "CONFLUENCE")
         store.set_last_setup_key(symbol, "CONFLUENCE", setup_key)
 
     return [state.to_dict() for state in states.values()]
