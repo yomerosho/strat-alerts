@@ -1,9 +1,9 @@
 """
 dashboard/app.py
 -----------------
-Password-protected Streamlit dashboard for the Strat Scanner, styled to
-match the OBI Strat Scanner look: dark theme, colored Strat-label badges,
-filter toggles, and a Daily/Weekly/Monthly continuity indicator.
+Password-protected Streamlit dashboard for the Strat Scanner, built around
+a 0DTE workflow: FTFC computed across the higher timeframes (15Min/30Min/
+1H/4H/1D by default), entries confirmed on the fast timeframes (5Min/15Min).
 
 This app does NOT do any scanning itself -- GitHub Actions does that in the
 background (see ../.github/workflows/strat-scanner.yml) and commits
@@ -53,12 +53,52 @@ div[data-testid="stVerticalBlock"] div[data-testid="stHorizontalBlock"] { gap: 0
     display: inline-block; padding: 2px 7px; border-radius: 5px; font-weight: 700;
     font-size: 11px; margin-right: 3px;
 }
-.setup-badge {
-    display: inline-block; padding: 3px 10px; border-radius: 5px; font-size: 12px;
-    font-weight: 600; border: 1px solid;
+.confluence-card {
+    background: #0f1320; border: 1px solid #1e293b; border-radius: 8px;
+    padding: 14px 16px; margin-bottom: 8px;
 }
+.confluence-card.bull { border-left: 3px solid #22c55e; }
+.confluence-card.bear { border-left: 3px solid #ef4444; }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
 .continuity-label { font-size: 11px; font-weight: 700; margin-left: 4px; letter-spacing: 0.03em; }
+
+/* Streamlit's native widgets default to a light theme regardless of our
+   custom CSS above -- override buttons, expanders, and text inputs so
+   they're actually readable against the dark background. */
+.stButton button, [data-testid="stBaseButton-secondary"] {
+    background-color: #1e293b !important;
+    color: #e2e8f0 !important;
+    border: 1px solid #334155 !important;
+}
+.stButton button:hover, [data-testid="stBaseButton-secondary"]:hover {
+    background-color: #273449 !important;
+    border-color: #475569 !important;
+    color: #f1f5f9 !important;
+}
+[data-testid="stExpander"] {
+    background-color: #0f1320 !important;
+    border: 1px solid #1e293b !important;
+    border-radius: 8px !important;
+}
+[data-testid="stExpander"] summary {
+    background-color: #0f1320 !important;
+    color: #e2e8f0 !important;
+}
+[data-testid="stExpander"] summary:hover {
+    background-color: #161b26 !important;
+}
+[data-testid="stExpanderDetails"] {
+    background-color: #0f1320 !important;
+    color: #cbd5e1 !important;
+}
+[data-testid="stExpanderDetails"] p, [data-testid="stExpanderDetails"] strong {
+    color: #cbd5e1 !important;
+}
+.stTextInput input {
+    background-color: #161b26 !important;
+    color: #e2e8f0 !important;
+    border: 1px solid #334155 !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -100,7 +140,7 @@ if not check_password():
 # --------------------------------------------------------------------------
 # Data fetch
 # --------------------------------------------------------------------------
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=30, show_spinner=False)
 def fetch_snapshot(owner: str, repo: str, branch: str) -> dict | None:
     url = f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/latest_scan.json"
     try:
@@ -123,7 +163,7 @@ if not owner or not repo:
 col_title, col_refresh = st.columns([5, 1])
 with col_title:
     st.title("📊 Strat Scanner")
-    st.caption("THE STRAT · CONTINUITY (D/W/M) · LIVE 4H / DAILY / WEEKLY / MONTHLY")
+    st.caption("THE STRAT · FTFC CONFLUENCE · 5m / 15m / 30m / 1H / 4H / 1D")
 with col_refresh:
     if st.button("🔄 Refresh now"):
         fetch_snapshot.clear()
@@ -140,7 +180,9 @@ if not data:
 
 generated_at = data.get("generated_at_utc", "unknown")
 states = data.get("states", [])
-all_timeframes = data.get("timeframes", ["4H", "1D", "1W", "1M"])
+all_timeframes = data.get("timeframes", ["5Min", "15Min", "30Min", "1H", "4H", "1D"])
+ftfc_timeframes = data.get("ftfc_timeframes", ["15Min", "30Min", "1H", "4H", "1D"])
+entry_timeframes = data.get("entry_timeframes", ["5Min", "15Min"])
 
 try:
     gen_dt = datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
@@ -159,7 +201,8 @@ df["last_label"] = df["last_three_labels"].apply(lambda labels: labels[-1] if la
 
 
 def direction(row) -> str:
-    """bull / bear / neutral, based on a live trigger first, else the last completed bar's label."""
+    """bull / bear / neutral -- a live trigger wins, otherwise fall back to
+    the last completed bar's label. Mirrors scanner.StratState.direction."""
     if row["trigger"] == "bullish_trigger":
         return "bull"
     if row["trigger"] == "bearish_trigger":
@@ -177,19 +220,18 @@ df["is_fired"] = df["trigger"].notna()
 df["is_actionable"] = df["is_inside_setup"] | df["is_fired"]
 
 # --------------------------------------------------------------------------
-# Continuity (Daily / Weekly / Monthly) -- computed per symbol, independent
-# of which timeframe tab is currently selected. This is the classic Strat
-# "Full Timeframe Continuity" (FTFC) concept: weekly/monthly bias as context,
-# even for traders (like 0DTE) who only execute on 4H/1D.
+# FTFC -- computed per symbol across ftfc_timeframes, independent of which
+# tab is selected. Entry signal -- a live trigger on an entry timeframe
+# matching the FTFC direction. This mirrors main.py's alert logic exactly,
+# so what you see here is what would have triggered a Telegram/WhatsApp alert.
 # --------------------------------------------------------------------------
-continuity_tfs = [tf for tf in ["1D", "1W", "1M"] if tf in all_timeframes]
 continuity_map: dict[str, dict[str, str]] = {}
 for symbol in df["symbol"].unique():
     sym_df = df[df["symbol"] == symbol]
     continuity_map[symbol] = {
         tf: (sym_df[sym_df["timeframe"] == tf]["direction"].iloc[0]
              if not sym_df[sym_df["timeframe"] == tf].empty else "neutral")
-        for tf in continuity_tfs
+        for tf in ftfc_timeframes
     }
 
 
@@ -200,6 +242,21 @@ def ftfc_status(symbol: str) -> str:
     if dirs == {"bear"}:
         return "bear"
     return "mixed"
+
+
+def entry_signal(symbol: str) -> tuple[str, str] | None:
+    """Returns (timeframe, trigger) if an entry timeframe has a trigger
+    matching this symbol's FTFC direction, else None."""
+    status = ftfc_status(symbol)
+    if status == "mixed":
+        return None
+    wanted = "bullish_trigger" if status == "bull" else "bearish_trigger"
+    sym_df = df[df["symbol"] == symbol]
+    for tf in entry_timeframes:
+        row = sym_df[sym_df["timeframe"] == tf]
+        if not row.empty and row.iloc[0]["trigger"] == wanted:
+            return (tf, wanted)
+    return None
 
 
 # --------------------------------------------------------------------------
@@ -222,11 +279,24 @@ def render_signal(trigger: str | None) -> str:
     return '<span style="color:#475569;">—</span>'
 
 
+def format_bar_time(iso_str: str) -> str:
+    """Human-readable version of an ISO timestamp. Daily bars land exactly
+    on midnight, so just show the date for those; intraday bars show
+    date + time."""
+    try:
+        dt = datetime.fromisoformat(iso_str)
+    except (ValueError, TypeError):
+        return iso_str
+    if dt.hour == 0 and dt.minute == 0 and dt.second == 0:
+        return dt.strftime("%b %d, %Y")
+    return dt.strftime("%b %d, %Y · %I:%M %p").replace(" 0", " ")
+
+
 def render_continuity(symbol: str) -> str:
     dots = "".join(
         f'<span class="dot" style="background:{DIR_COLOR.get(continuity_map[symbol].get(tf, "neutral"), "#475569")};" '
         f'title="{tf}"></span>'
-        for tf in continuity_tfs
+        for tf in ftfc_timeframes
     )
     status = ftfc_status(symbol)
     label_color = DIR_COLOR.get(status, "#94a3b8")
@@ -236,8 +306,8 @@ def render_continuity(symbol: str) -> str:
 
 def render_table(rows: pd.DataFrame) -> str:
     header = (
-        "<tr><th>Ticker</th><th>Price</th><th>Strat Sequence</th><th>Signal</th>"
-        "<th>Continuity (D/W/M)</th><th>Break ↑</th><th>Break ↓</th><th>Last Bar</th></tr>"
+        f"<tr><th>Ticker</th><th>Price</th><th>Strat Sequence</th><th>Signal</th>"
+        f"<th>FTFC ({'/'.join(ftfc_timeframes)})</th><th>Break ↑</th><th>Break ↓</th><th>Last Bar</th></tr>"
     )
     body_rows = []
     for _, r in rows.iterrows():
@@ -250,14 +320,47 @@ def render_table(rows: pd.DataFrame) -> str:
             f'<td>{render_continuity(r["symbol"])}</td>'
             f'<td>{r["last_completed_high"]:.2f}</td>'
             f'<td>{r["last_completed_low"]:.2f}</td>'
-            f'<td style="color:#64748b;">{r["last_bar_time"]}</td>'
+            f'<td style="color:#64748b;">{format_bar_time(r["last_bar_time"])}</td>'
             "</tr>"
         )
     return f'<table class="strat-table">{header}{"".join(body_rows)}</table>'
 
 
 # --------------------------------------------------------------------------
-# Filters + tabs
+# Top section: live confluence signals -- exactly what would have fired an
+# alert. This is the primary view for a 0DTE workflow: FTFC agrees AND an
+# entry timeframe has a live trigger.
+# --------------------------------------------------------------------------
+st.subheader("🎯 Live Confluence Signals")
+confluence_rows = []
+for symbol in sorted(df["symbol"].unique()):
+    status = ftfc_status(symbol)
+    sig = entry_signal(symbol)
+    if status != "mixed" and sig is not None:
+        confluence_rows.append((symbol, status, sig))
+
+if not confluence_rows:
+    st.caption("No symbol currently has full FTFC agreement *and* a live entry trigger. Check back, or browse by timeframe below.")
+else:
+    for symbol, status, (entry_tf, trigger) in confluence_rows:
+        sym_df = df[(df["symbol"] == symbol) & (df["timeframe"] == entry_tf)]
+        price = sym_df.iloc[0]["current_price"] if not sym_df.empty else None
+        emoji = "🟢" if status == "bull" else "🔴"
+        word = "BULLISH" if status == "bull" else "BEARISH"
+        price_text = f"{price:.2f}" if price is not None else "—"
+        st.markdown(
+            f'<div class="confluence-card {status}">'
+            f'<span style="font-size:16px;font-weight:800;color:#f1f5f9;">{emoji} {symbol}</span> '
+            f'<span style="color:{DIR_COLOR[status]};font-weight:700;">{word} FTFC</span> '
+            f'+ entry trigger on <b>{entry_tf}</b> · price {price_text}'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+st.divider()
+
+# --------------------------------------------------------------------------
+# Filters + tabs (per timeframe, for manual inspection)
 # --------------------------------------------------------------------------
 tf_tabs = st.tabs(all_timeframes)
 
@@ -267,6 +370,9 @@ for tf, tab in zip(all_timeframes, tf_tabs):
         if tf_df.empty:
             st.info(f"No {tf} data in the latest scan.")
             continue
+
+        if tf in entry_timeframes:
+            st.caption(f"⚡ {tf} is one of your entry timeframes.")
 
         c1, c2, c3, c4, c5, c6 = st.columns(6)
         f_actionable = c1.checkbox("Actionable", key=f"act_{tf}")
@@ -301,11 +407,13 @@ for tf, tab in zip(all_timeframes, tf_tabs):
 st.divider()
 with st.expander("Watchlist tickers in this scan"):
     st.write(", ".join(data.get("tickers", [])))
-with st.expander("About the Continuity (D/W/M) indicator"):
+with st.expander("About FTFC + entry confluence"):
     st.markdown(
-        "Shows directional bias on Daily, Weekly, and Monthly regardless of which "
-        "tab you're viewing -- the classic Strat **Full Timeframe Continuity (FTFC)** "
-        "concept. Green = bullish, red = bearish, gray = neutral/inside-bar/outside-bar. "
-        "**FTFC only** filters to symbols where all three agree -- useful as directional "
-        "confluence even if you only execute on 4H/1D."
+        f"**FTFC** ({', '.join(ftfc_timeframes)}) shows directional bias regardless of "
+        f"which tab you're viewing -- the classic Strat **Full Timeframe Continuity** "
+        f"concept. Green = bullish, red = bearish, gray = neutral/inside-bar/outside-bar.\n\n"
+        f"**Entry timeframes** ({', '.join(entry_timeframes)}) are where actual triggers "
+        f"are checked against the FTFC direction. The **Live Confluence Signals** section "
+        f"at the top shows exactly what would have sent you a Telegram/WhatsApp alert -- "
+        f"FTFC agreement *and* a live trigger on an entry timeframe, matching direction."
     )
