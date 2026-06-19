@@ -3,9 +3,12 @@ main.py
 -------
 Long-running asyncio service that:
   1. Re-reads the watchlist (tickers.txt) every cycle -> dynamic custom tickers.
-  2. Scans every symbol x timeframe concurrently via asyncio.TaskGroup.
-  3. Debounces alerts against SQLite-persisted last-known-state.
-  4. Sends new/changed setups to Telegram and/or WhatsApp.
+  2. For each symbol, fetches every configured timeframe concurrently.
+  3. Computes FTFC (Full Timeframe Continuity) across the FTFC timeframes
+     (15Min/30Min/1H/4H/1D by default) and checks the entry timeframes
+     (5Min/15Min by default) for a trigger matching that direction.
+  4. Sends a confluence alert to Telegram/WhatsApp only when FTFC agrees
+     AND a matching entry trigger fires -- not on every single-timeframe blip.
   5. Writes latest_scan.json -- the data feed the Streamlit dashboard reads.
 
 Run as a service:
@@ -29,7 +32,7 @@ from typing import Optional
 
 from config import BASE_DIR, CONFIG, STATE_DB_PATH, add_ticker, load_tickers, remove_ticker
 from scanner import StratScanner, StratState
-from alerting import AlertManager, StateStore, format_alert
+from alerting import AlertManager, StateStore, format_confluence_alert
 
 logger = logging.getLogger("strat_scanner.main")
 SNAPSHOT_FILE = BASE_DIR / "latest_scan.json"
@@ -43,36 +46,66 @@ def setup_logging() -> None:
     )
 
 
-async def evaluate_symbol_timeframe(
+def compute_ftfc(states: dict[str, StratState]) -> str:
+    """bull / bear / mixed, based on agreement across CONFIG.ftfc_timeframes."""
+    dirs = {states[tf].direction for tf in CONFIG.ftfc_timeframes if tf in states}
+    if dirs == {"bull"}:
+        return "bull"
+    if dirs == {"bear"}:
+        return "bear"
+    return "mixed"
+
+
+def find_entry_signal(ftfc: str, states: dict[str, StratState]) -> Optional[tuple[str, str]]:
+    """Returns (timeframe, trigger) for the first entry timeframe whose live
+    trigger matches the FTFC direction, or None if there isn't one."""
+    if ftfc == "mixed":
+        return None
+    wanted = "bullish_trigger" if ftfc == "bull" else "bearish_trigger"
+    for tf in CONFIG.entry_timeframes:
+        state = states.get(tf)
+        if state and state.trigger == wanted:
+            return (tf, wanted)
+    return None
+
+
+async def evaluate_symbol(
     scanner: StratScanner,
     alert_manager: AlertManager,
     store: StateStore,
     symbol: str,
-    timeframe: str,
-) -> Optional[dict]:
-    """Returns a JSON-serializable snapshot dict for the dashboard feed
-    (or None if the fetch failed / there wasn't enough data)."""
-    try:
-        # alpaca-py's client is sync; offload to a thread so it doesn't block the loop.
-        state: StratState | None = await asyncio.to_thread(scanner.get_state, symbol, timeframe)
-    except Exception:
-        logger.exception("Failed to fetch/evaluate %s [%s]", symbol, timeframe)
-        return None
+) -> list[dict]:
+    """Fetches every configured timeframe for one symbol, computes FTFC +
+    entry-signal confluence, alerts on a fresh confluence event, and
+    returns JSON-serializable snapshots for the dashboard feed."""
+    states: dict[str, StratState] = {}
+    for timeframe in CONFIG.timeframes:
+        try:
+            # alpaca-py's client is sync; offload to a thread so it doesn't block the loop.
+            state = await asyncio.to_thread(scanner.get_state, symbol, timeframe)
+        except Exception:
+            logger.exception("Failed to fetch/evaluate %s [%s]", symbol, timeframe)
+            continue
+        if state is not None:
+            states[timeframe] = state
 
-    if state is None:
-        return None
+    if not states:
+        return []
 
-    last_key = store.get_last_setup_key(symbol, timeframe)
-    if state.setup_key != last_key:
-        # Only alert on something actionable: a live trigger, or a fresh 3-bar
-        # sequence change (e.g. a new inside bar forming a setup).
-        if state.trigger is not None or last_key is None:
-            message = format_alert(state)
-            logger.info("New setup for %s [%s]: %s", symbol, timeframe, state.setup_key)
+    ftfc = compute_ftfc(states)
+    entry_signal = find_entry_signal(ftfc, states)
+
+    setup_key = f"ftfc={ftfc}|entry={entry_signal}"
+    last_key = store.get_last_setup_key(symbol, "CONFLUENCE")
+    if setup_key != last_key:
+        if entry_signal is not None:
+            entry_tf, trigger = entry_signal
+            message = format_confluence_alert(symbol, ftfc, entry_tf, trigger, states, CONFIG.ftfc_timeframes)
+            logger.info("Confluence alert for %s: %s", symbol, setup_key)
             await alert_manager.send(message)
-        store.set_last_setup_key(symbol, timeframe, state.setup_key)
+        store.set_last_setup_key(symbol, "CONFLUENCE", setup_key)
 
-    return state.to_dict()
+    return [state.to_dict() for state in states.values()]
 
 
 async def scan_cycle(scanner: StratScanner, alert_manager: AlertManager, store: StateStore) -> None:
@@ -83,17 +116,15 @@ async def scan_cycle(scanner: StratScanner, alert_manager: AlertManager, store: 
     try:
         async with asyncio.TaskGroup() as tg:  # Python 3.11+
             for symbol in tickers:
-                for timeframe in CONFIG.timeframes:
-                    tasks.append(
-                        tg.create_task(
-                            evaluate_symbol_timeframe(scanner, alert_manager, store, symbol, timeframe)
-                        )
-                    )
+                tasks.append(tg.create_task(evaluate_symbol(scanner, alert_manager, store, symbol)))
     except* Exception as eg:  # pragma: no cover -- safety net, individual tasks already self-handle
         for exc in eg.exceptions:
             logger.exception("Unhandled error in scan task", exc_info=exc)
 
-    snapshots = [t.result() for t in tasks if not t.cancelled() and t.result() is not None]
+    snapshots: list[dict] = []
+    for t in tasks:
+        if not t.cancelled():
+            snapshots.extend(t.result())
     write_snapshot_file(tickers, snapshots)
 
 
@@ -104,6 +135,8 @@ def write_snapshot_file(tickers: list[str], snapshots: list[dict]) -> None:
         "generated_at_utc": datetime.utcnow().isoformat() + "Z",
         "tickers": tickers,
         "timeframes": list(CONFIG.timeframes),
+        "ftfc_timeframes": list(CONFIG.ftfc_timeframes),
+        "entry_timeframes": list(CONFIG.entry_timeframes),
         "states": snapshots,
     }
     SNAPSHOT_FILE.write_text(json.dumps(payload, indent=2))

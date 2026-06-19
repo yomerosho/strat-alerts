@@ -76,6 +76,22 @@ class StratState:
             "trigger": self.trigger,
         }
 
+    @property
+    def direction(self) -> str:
+        """bull / bear / neutral -- a live trigger wins, otherwise fall back
+        to the last completed bar's label. Shared by FTFC computation in
+        main.py and by the dashboard so both apply the same rule."""
+        if self.trigger == "bullish_trigger":
+            return "bull"
+        if self.trigger == "bearish_trigger":
+            return "bear"
+        last_label = self.last_three_labels[-1] if self.last_three_labels else None
+        if last_label == "2U":
+            return "bull"
+        if last_label == "2D":
+            return "bear"
+        return "neutral"
+
 
 def label_bars(df: pd.DataFrame) -> pd.DataFrame:
     """Add a 'strat_label' column to an OHLC dataframe (needs prior bar)."""
@@ -113,6 +129,15 @@ def detect_trigger(df: pd.DataFrame, current_price: float) -> Optional[str]:
     return None
 
 
+INTRADAY_DURATIONS = {
+    "5Min": pd.Timedelta(minutes=5),
+    "15Min": pd.Timedelta(minutes=15),
+    "30Min": pd.Timedelta(minutes=30),
+    "1H": pd.Timedelta(hours=1),
+    "4H": pd.Timedelta(hours=4),
+}
+
+
 def bar_period_has_closed(bar_time: pd.Timestamp, timeframe_label: str) -> bool:
     """
     Whether a bar's own time period has actually finished in real time.
@@ -124,8 +149,8 @@ def bar_period_has_closed(bar_time: pd.Timestamp, timeframe_label: str) -> bool:
     (e.g. always showing yesterday's date on the Daily tab, even at 10pm).
     """
     now_et = pd.Timestamp.now(tz="US/Eastern")
-    if timeframe_label == "4H":
-        return now_et >= bar_time + pd.Timedelta(hours=4)
+    if timeframe_label in INTRADAY_DURATIONS:
+        return now_et >= bar_time + INTRADAY_DURATIONS[timeframe_label]
     if timeframe_label == "1D":
         # Alpaca's daily bar timestamp lands at midnight ET of the trading
         # day; that session's data is final once the 16:00 ET close passes.
@@ -203,18 +228,22 @@ class StratScanner:
         return df[["open", "high", "low", "close", "volume"]]
 
     def get_state(self, symbol: str, timeframe_label: str) -> Optional[StratState]:
-        """timeframe_label is one of '4H', '1D', '1W', '1M'."""
+        """timeframe_label is one of '5Min', '15Min', '30Min', '1H', '4H', '1D'."""
         now = datetime.utcnow()
 
-        if timeframe_label == "4H":
+        if timeframe_label == "5Min":
+            df = self._fetch(symbol, TimeFrame(5, TimeFrameUnit.Minute), now - timedelta(days=5))
+        elif timeframe_label == "15Min":
+            df = self._fetch(symbol, TimeFrame(15, TimeFrameUnit.Minute), now - timedelta(days=10))
+        elif timeframe_label == "30Min":
+            df = self._fetch(symbol, TimeFrame(30, TimeFrameUnit.Minute), now - timedelta(days=15))
+        elif timeframe_label == "1H":
+            df = self._fetch(symbol, TimeFrame(1, TimeFrameUnit.Hour), now - timedelta(days=20))
+        elif timeframe_label == "4H":
             hourly = self._fetch(symbol, TimeFrame(1, TimeFrameUnit.Hour), now - timedelta(days=20))
             df = resample_to_4h(hourly)
         elif timeframe_label == "1D":
             df = self._fetch(symbol, TimeFrame(1, TimeFrameUnit.Day), now - timedelta(days=180))
-        elif timeframe_label == "1W":
-            df = self._fetch(symbol, TimeFrame(1, TimeFrameUnit.Week), now - timedelta(days=365 * 2))
-        elif timeframe_label == "1M":
-            df = self._fetch(symbol, TimeFrame(1, TimeFrameUnit.Month), now - timedelta(days=365 * 6))
         else:
             raise ValueError(f"Unknown timeframe label: {timeframe_label}")
 

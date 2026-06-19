@@ -95,7 +95,14 @@ class Config:
 
     # --- Scan behavior ---
     scan_interval_seconds: int = field(default_factory=lambda: int(os.getenv("SCAN_INTERVAL_SECONDS", "60")))
-    timeframes: tuple[str, ...] = ("4H", "1D", "1W", "1M")
+    timeframes: tuple[str, ...] = ("5Min", "15Min", "30Min", "1H", "4H", "1D")
+    # FTFC (Full Timeframe Continuity) bias is computed across these --
+    # matches a 0DTE/intraday workflow: weekly/monthly bias is irrelevant
+    # when you're flat by end of day.
+    ftfc_timeframes: tuple[str, ...] = ("15Min", "30Min", "1H", "4H", "1D")
+    # Actual entries are confirmed on these -- a trigger here, matching the
+    # FTFC direction, is the "go" signal.
+    entry_timeframes: tuple[str, ...] = ("5Min", "15Min")
 
     # Alpaca silently defaults to IEX-only data (one exchange, ~2-3% of
     # volume) unless told otherwise -- even on paid plans. If you have a

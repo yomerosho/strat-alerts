@@ -127,17 +127,30 @@ class AlertManager:
             logger.exception("Error sending WhatsApp alert")
 
 
-def format_alert(state) -> str:  # state: scanner.StratState, avoiding circular import in type hints
-    trig_text = {
-        "bullish_trigger": "🟢 BULLISH TRIGGER",
-        "bearish_trigger": "🔴 BEARISH TRIGGER",
-        None: "Setup update",
-    }.get(state.trigger, "Setup update")
+def format_confluence_alert(
+    symbol: str,
+    ftfc: str,
+    entry_tf: str,
+    trigger: str,
+    states: dict,  # dict[str, scanner.StratState] -- avoiding circular import in type hints
+    ftfc_timeframes: list,
+) -> str:
+    """A confluence alert: FTFC direction agrees across the higher
+    timeframes AND a live trigger just fired on the entry timeframe in
+    that same direction -- the actual "go" signal for a 0DTE-style entry."""
+    direction_emoji = "🟢" if ftfc == "bull" else "🔴"
+    direction_word = "BULLISH" if ftfc == "bull" else "BEARISH"
 
-    seq = "-".join(state.last_three_labels)
+    ftfc_summary = " · ".join(
+        f"{tf}:{states[tf].direction}" for tf in ftfc_timeframes if tf in states
+    )
+    entry_state = states[entry_tf]
+    arrow = "↑" if trigger == "bullish_trigger" else "↓"
+    level = entry_state.last_completed_high if trigger == "bullish_trigger" else entry_state.last_completed_low
+
     return (
-        f"**{state.symbol}** [{state.timeframe}] — {trig_text}\n"
-        f"Strat sequence: `{seq}`\n"
-        f"Price: {state.current_price:.2f} | "
-        f"Break levels: ↑{state.last_completed_high:.2f} / ↓{state.last_completed_low:.2f}"
+        f"{direction_emoji} **{symbol}** — {direction_word} FTFC + entry trigger on {entry_tf}\n"
+        f"Price {entry_state.current_price:.2f} broke {arrow} {level:.2f}\n"
+        f"FTFC: {ftfc_summary}\n"
+        f"Check your 5m/15m chart now to confirm entry."
     )
