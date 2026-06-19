@@ -29,6 +29,14 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+        - name: Debug check secrets (masked - safe to share)
+        run: |
+          echo "ALPACA_API_KEY length: ${#ALPACA_API_KEY}"
+          echo "ALPACA_SECRET_KEY length: ${#ALPACA_SECRET_KEY}"
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+
       - name: Run one scan cycle
         env:
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
