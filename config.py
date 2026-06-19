@@ -114,6 +114,21 @@ class Config:
     # trigger an "Entry" alert instead (see main.py).
     pattern_watch_timeframes: tuple[str, ...] = ("1H", "4H", "1D")
 
+    # Minimum number of FTFC timeframes that must agree with the pattern's
+    # direction before an alert is sent. Applied per-alert before sending.
+    #
+    # WATCH alerts (higher-TF setup forming, anticipatory):
+    #   4/5 required -- don't send a heads-up unless the bias is genuinely
+    #   stacked. A Watch at 2/5 is noise, not a setup worth watching.
+    #
+    # ENTRY alerts (trigger on 5m/15m, the "go" signal):
+    #   4/5 required for all setups EXCEPT Failed-2, which is allowed at 3/5
+    #   because the trapped-traders mechanic creates its own momentum
+    #   independent of broader bias.
+    min_continuity_watch: int = 4
+    min_continuity_entry: int = 4
+    min_continuity_entry_failed2: int = 3
+
     # Alpaca silently defaults to IEX-only data (one exchange, ~2-3% of
     # volume) unless told otherwise -- even on paid plans. If you have a
     # subscription that includes the full consolidated SIP feed (e.g.

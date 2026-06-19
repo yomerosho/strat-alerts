@@ -132,7 +132,31 @@ async def evaluate_symbol(
 
     pmg_note = find_pmg_note(states)
 
-    async def maybe_send(tf: str, pattern, alert_kind: str, message: str) -> None:
+    async def maybe_send(tf: str, pattern, alert_kind: str, message: str, continuity_score: str) -> None:
+        # --- Continuity threshold gate ---
+        # Parse the "X/5" score into an integer and check against configured
+        # minimums before touching the debounce store at all. Suppressed
+        # alerts don't update the store -- so if bias improves next cycle
+        # and the threshold is now met, the alert will fire as a fresh event.
+        try:
+            agree = int(continuity_score.split("/")[0])
+        except (ValueError, IndexError):
+            agree = 0
+
+        if alert_kind == "WATCH":
+            threshold = CONFIG.min_continuity_watch
+        elif pattern.name == "Failed-2":
+            threshold = CONFIG.min_continuity_entry_failed2
+        else:
+            threshold = CONFIG.min_continuity_entry
+
+        if agree < threshold:
+            logger.info(
+                "Skipping %s alert for %s [%s/%s]: continuity %s below threshold %d/5",
+                alert_kind, symbol, tf, pattern.name, continuity_score, threshold,
+            )
+            return
+
         # Pattern name included in the store key -- distinct patterns on the
         # same timeframe must never share debounce/cooldown tracking.
         store_key = f"{alert_kind}:{tf}:{pattern.name}"
@@ -164,7 +188,7 @@ async def evaluate_symbol(
                 continue
             score = compute_continuity_score(states, pattern.direction)
             message = format_watch_alert(symbol, tf, pattern, score, pmg_note)
-            await maybe_send(tf, pattern, "WATCH", message)
+            await maybe_send(tf, pattern, "WATCH", message, score)
 
     # ENTRY -- the actual "go" signal, on the entry timeframes
     for tf in CONFIG.entry_timeframes:
@@ -177,7 +201,7 @@ async def evaluate_symbol(
             target = compute_target(states, tf, pattern.direction)
             score = compute_continuity_score(states, pattern.direction)
             message = format_entry_alert(symbol, tf, pattern, target, score, pmg_note)
-            await maybe_send(tf, pattern, "ENTRY", message)
+            await maybe_send(tf, pattern, "ENTRY", message, score)
 
     return [state.to_dict() for state in states.values()]
 
