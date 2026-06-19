@@ -29,10 +29,12 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Debug check secrets (masked - safe to share)
+      - name: Debug raw curl test (safe - only prints HTTP status code)
         run: |
-          echo "ALPACA_API_KEY length: ${#ALPACA_API_KEY}"
-          echo "ALPACA_SECRET_KEY length: ${#ALPACA_SECRET_KEY}"
+          curl -s -o /dev/null -w "HTTP status: %{http_code}\n" \
+            -H "APCA-API-KEY-ID: $ALPACA_API_KEY" \
+            -H "APCA-API-SECRET-KEY: $ALPACA_SECRET_KEY" \
+            "https://data.alpaca.markets/v2/stocks/bars?symbols=SPY&timeframe=1Day&limit=5"
         env:
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
