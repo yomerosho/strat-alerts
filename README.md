@@ -175,6 +175,16 @@ Ask if you want the full VPS walkthrough later.
 
 ## Notes / known limits
 
+- **Data feed matters for matching other charting tools.** Alpaca defaults to
+  IEX-only data (one exchange) unless told otherwise, even on paid plans.
+  TradingView and most other charting platforms default to the full
+  consolidated SIP tape. This can cause your Strat label sequence to
+  genuinely differ from what you see elsewhere, because IEX alone can miss
+  brief high/low prints that happened on other exchanges. If you have a
+  subscription that includes SIP (e.g. Algo Trader Plus), set
+  `ALPACA_DATA_FEED=sip` as a secret/env var to match. Leave it unset
+  (defaults to `iex`) if you're not sure — requesting `sip` without
+  entitlement causes 403 errors.
 - Alpaca's free/IEX feed is end-of-day-ish for some symbols and doesn't
   cover futures — stocks & ETFs (SPY/QQQ as proxies for ES/NQ) work fine.
 - This is detection only — no order/trade execution logic anywhere.

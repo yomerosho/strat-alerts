@@ -31,6 +31,7 @@ import pandas as pd
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
+from alpaca.data.enums import DataFeed
 
 logger = logging.getLogger("strat_scanner.scanner")
 
@@ -154,11 +155,17 @@ def resample_to_4h(hourly_df: pd.DataFrame) -> pd.DataFrame:
 class StratScanner:
     """Fetches bars from Alpaca and computes Strat state per symbol/timeframe."""
 
-    def __init__(self, api_key: str, secret_key: str):
+    def __init__(self, api_key: str, secret_key: str, data_feed: str = "iex"):
         self.client = StockHistoricalDataClient(api_key, secret_key)
+        feed_map = {"iex": DataFeed.IEX, "sip": DataFeed.SIP}
+        self.feed = feed_map.get(data_feed.lower(), DataFeed.IEX)
+        if data_feed.lower() not in feed_map:
+            logger.warning("Unknown ALPACA_DATA_FEED '%s', defaulting to IEX.", data_feed)
 
     def _fetch(self, symbol: str, timeframe: TimeFrame, start: datetime) -> pd.DataFrame:
-        req = StockBarsRequest(symbol_or_symbols=symbol, timeframe=timeframe, start=start)
+        req = StockBarsRequest(
+            symbol_or_symbols=symbol, timeframe=timeframe, start=start, feed=self.feed
+        )
         bars = self.client.get_stock_bars(req)
         df = bars.df
         if df.empty:

@@ -97,6 +97,15 @@ class Config:
     scan_interval_seconds: int = field(default_factory=lambda: int(os.getenv("SCAN_INTERVAL_SECONDS", "60")))
     timeframes: tuple[str, ...] = ("4H", "1D", "1W", "1M")
 
+    # Alpaca silently defaults to IEX-only data (one exchange, ~2-3% of
+    # volume) unless told otherwise -- even on paid plans. If you have a
+    # subscription that includes the full consolidated SIP feed (e.g.
+    # Algo Trader Plus), set ALPACA_DATA_FEED=sip to match what most
+    # charting platforms (like TradingView) show by default. Leave as
+    # "iex" if you're not sure -- requesting "sip" without entitlement
+    # will cause 403 errors.
+    alpaca_data_feed: str = field(default_factory=lambda: (os.getenv("ALPACA_DATA_FEED") or "iex").lower())
+
     # --- Misc ---
     log_level: str = field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))
 

@@ -116,7 +116,7 @@ async def run_service() -> None:
     for p in problems:
         logger.warning("Config issue: %s", p)
 
-    scanner = StratScanner(CONFIG.alpaca_api_key, CONFIG.alpaca_secret_key)
+    scanner = StratScanner(CONFIG.alpaca_api_key, CONFIG.alpaca_secret_key, CONFIG.alpaca_data_feed)
     alert_manager = AlertManager(
         telegram_bot_token=CONFIG.telegram_bot_token,
         telegram_chat_id=CONFIG.telegram_chat_id,
@@ -140,7 +140,7 @@ async def run_once() -> None:
     for p in problems:
         logger.warning("Config issue: %s", p)
 
-    scanner = StratScanner(CONFIG.alpaca_api_key, CONFIG.alpaca_secret_key)
+    scanner = StratScanner(CONFIG.alpaca_api_key, CONFIG.alpaca_secret_key, CONFIG.alpaca_data_feed)
     alert_manager = AlertManager(
         telegram_bot_token=CONFIG.telegram_bot_token,
         telegram_chat_id=CONFIG.telegram_chat_id,
