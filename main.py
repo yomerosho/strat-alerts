@@ -236,6 +236,9 @@ def write_snapshot_file(tickers: list[str], snapshots: list[dict]) -> None:
         "ftfc_timeframes": list(CONFIG.ftfc_timeframes),
         "entry_timeframes": list(CONFIG.entry_timeframes),
         "pattern_watch_timeframes": list(CONFIG.pattern_watch_timeframes),
+        "min_continuity_watch": CONFIG.min_continuity_watch,
+        "min_continuity_entry": CONFIG.min_continuity_entry,
+        "min_continuity_entry_failed2": CONFIG.min_continuity_entry_failed2,
         "states": snapshots,
     }
     SNAPSHOT_FILE.write_text(json.dumps(payload, indent=2))
