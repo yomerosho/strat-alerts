@@ -96,17 +96,6 @@ class Config:
     # needed, since the group itself fans out to its members.
     telegram_chat_id: list[str] = field(default_factory=lambda: parse_recipient_list(os.getenv("TELEGRAM_CHAT_ID", "")))
 
-    # WhatsApp via Twilio (https://www.twilio.com/whatsapp) -- needs a Twilio
-    # account with the WhatsApp sandbox/sender enabled.
-    twilio_account_sid: str = field(default_factory=lambda: os.getenv("TWILIO_ACCOUNT_SID", ""))
-    twilio_auth_token: str = field(default_factory=lambda: os.getenv("TWILIO_AUTH_TOKEN", ""))
-    twilio_whatsapp_from: str = field(default_factory=lambda: os.getenv("TWILIO_WHATSAPP_FROM", ""))  # e.g. "whatsapp:+14155238886"
-    # Comma-separated for multiple recipients, e.g.
-    # "whatsapp:+15551234567,whatsapp:+15557654321". Each number must have
-    # individually joined the Twilio sandbox (or be an approved recipient on
-    # a production WhatsApp sender) -- there's no WhatsApp group equivalent
-    # here, so every recipient needs their own onboarding step.
-    twilio_whatsapp_to: list[str] = field(default_factory=lambda: parse_recipient_list(os.getenv("TWILIO_WHATSAPP_TO", "")))
 
     # --- Scan behavior ---
     scan_interval_seconds: int = field(default_factory=lambda: int(os.getenv("SCAN_INTERVAL_SECONDS", "60")))
@@ -151,14 +140,9 @@ class Config:
             problems.append("ALPACA_API_KEY / ALPACA_SECRET_KEY are not set.")
 
         has_telegram = bool(self.telegram_bot_token and self.telegram_chat_id)
-        has_whatsapp = bool(
-            self.twilio_account_sid and self.twilio_auth_token
-            and self.twilio_whatsapp_from and self.twilio_whatsapp_to
-        )
-        if not has_telegram and not has_whatsapp:
+        if not has_telegram:
             problems.append(
-                "No alert channel configured: set TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID, "
-                "and/or TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN + TWILIO_WHATSAPP_FROM + TWILIO_WHATSAPP_TO."
+                "No alert channel configured: set TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID."
             )
         return problems
 

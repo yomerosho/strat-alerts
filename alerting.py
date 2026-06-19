@@ -1,7 +1,7 @@
 """
 alerting.py
 -----------
-AlertManager: sends Strat setup notifications to Telegram and/or WhatsApp.
+AlertManager: sends Strat setup notifications to Telegram.
 StateStore: SQLite-backed "last known state" so alerts only fire once per
             new setup/trigger instead of spamming every scan cycle.
 """
@@ -123,17 +123,9 @@ class AlertManager:
         self,
         telegram_bot_token: str = "",
         telegram_chat_id: Optional[list] = None,
-        twilio_account_sid: str = "",
-        twilio_auth_token: str = "",
-        twilio_whatsapp_from: str = "",
-        twilio_whatsapp_to: Optional[list] = None,
     ):
         self.telegram_bot_token = telegram_bot_token
         self.telegram_chat_ids = telegram_chat_id or []
-        self.twilio_account_sid = twilio_account_sid
-        self.twilio_auth_token = twilio_auth_token
-        self.twilio_whatsapp_from = twilio_whatsapp_from
-        self.twilio_whatsapp_to_numbers = twilio_whatsapp_to or []
 
     async def send(self, message: str) -> None:
         async with aiohttp.ClientSession() as session:
@@ -141,9 +133,6 @@ class AlertManager:
             if self.telegram_bot_token:
                 for chat_id in self.telegram_chat_ids:
                     tasks.append(self._send_telegram(session, chat_id, message))
-            if self.twilio_account_sid and self.twilio_auth_token and self.twilio_whatsapp_from:
-                for to_number in self.twilio_whatsapp_to_numbers:
-                    tasks.append(self._send_whatsapp(session, to_number, message))
             if tasks:
                 await asyncio.gather(*tasks)
 
@@ -157,25 +146,6 @@ class AlertManager:
         except Exception:
             logger.exception("Error sending Telegram alert to %s", chat_id)
 
-    async def _send_whatsapp(self, session: aiohttp.ClientSession, to_number: str, message: str) -> None:
-        """Sends via Twilio's WhatsApp API. Requires a Twilio account with a
-        WhatsApp-enabled sender (sandbox for testing, or an approved
-        WhatsApp Business sender for production). Each recipient must have
-        individually joined the sandbox (or be approved on a production
-        sender) -- there's no WhatsApp group equivalent here."""
-        url = f"https://api.twilio.com/2010-04-01/Accounts/{self.twilio_account_sid}/Messages.json"
-        auth = aiohttp.BasicAuth(self.twilio_account_sid, self.twilio_auth_token)
-        data = {
-            "From": self.twilio_whatsapp_from,
-            "To": to_number,
-            "Body": message,
-        }
-        try:
-            async with session.post(url, data=data, auth=auth, timeout=10) as resp:
-                if resp.status >= 300:
-                    logger.error("WhatsApp send to %s failed (%s): %s", to_number, resp.status, await resp.text())
-        except Exception:
-            logger.exception("Error sending WhatsApp alert to %s", to_number)
 
 
 def format_watch_alert(

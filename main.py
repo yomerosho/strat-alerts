@@ -7,7 +7,7 @@ Long-running asyncio service that:
   3. Computes FTFC (Full Timeframe Continuity) across the FTFC timeframes
      (15Min/30Min/1H/4H/1D by default) and checks the entry timeframes
      (5Min/15Min by default) for a trigger matching that direction.
-  4. Sends a confluence alert to Telegram/WhatsApp only when FTFC agrees
+  4. Sends a confluence alert to Telegram only when FTFC agrees
      AND a matching entry trigger fires -- not on every single-timeframe blip.
   5. Writes latest_scan.json -- the data feed the Streamlit dashboard reads.
 
@@ -228,10 +228,6 @@ async def run_service() -> None:
     alert_manager = AlertManager(
         telegram_bot_token=CONFIG.telegram_bot_token,
         telegram_chat_id=CONFIG.telegram_chat_id,
-        twilio_account_sid=CONFIG.twilio_account_sid,
-        twilio_auth_token=CONFIG.twilio_auth_token,
-        twilio_whatsapp_from=CONFIG.twilio_whatsapp_from,
-        twilio_whatsapp_to=CONFIG.twilio_whatsapp_to,
     )
     store = StateStore(STATE_DB_PATH)
 
@@ -252,10 +248,6 @@ async def run_once() -> None:
     alert_manager = AlertManager(
         telegram_bot_token=CONFIG.telegram_bot_token,
         telegram_chat_id=CONFIG.telegram_chat_id,
-        twilio_account_sid=CONFIG.twilio_account_sid,
-        twilio_auth_token=CONFIG.twilio_auth_token,
-        twilio_whatsapp_from=CONFIG.twilio_whatsapp_from,
-        twilio_whatsapp_to=CONFIG.twilio_whatsapp_to,
     )
     store = StateStore(STATE_DB_PATH)
 
