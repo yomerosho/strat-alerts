@@ -62,6 +62,12 @@ jobs:
           git add scanner_state.db tickers.txt latest_scan.json
           if ! git diff --cached --quiet; then
             git commit -m "Update scanner state [skip ci]"
+            # Pull any changes made elsewhere (e.g. manual edits via the
+            # GitHub web UI, or another run that finished first) since this
+            # job's checkout, so the push below doesn't get rejected as
+            # non-fast-forward. --rebase replays our commit on top of the
+            # latest remote history instead of merging.
+            git pull --rebase origin "${GITHUB_REF_NAME}"
             git push
           else
             echo "No state changes to commit."
