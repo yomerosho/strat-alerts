@@ -183,6 +183,7 @@ states = data.get("states", [])
 all_timeframes = data.get("timeframes", ["5Min", "15Min", "30Min", "1H", "4H", "1D"])
 ftfc_timeframes = data.get("ftfc_timeframes", ["15Min", "30Min", "1H", "4H", "1D"])
 entry_timeframes = data.get("entry_timeframes", ["5Min", "15Min"])
+pattern_watch_timeframes = data.get("pattern_watch_timeframes", ["1H", "4H", "1D"])
 
 try:
     gen_dt = datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
@@ -198,6 +199,9 @@ if not states:
 df = pd.DataFrame(states)
 df["strat_sequence"] = df["last_three_labels"].apply(lambda labels: list(labels))
 df["last_label"] = df["last_three_labels"].apply(lambda labels: labels[-1] if labels else None)
+df["patterns"] = df["patterns"].apply(lambda p: p if isinstance(p, list) else [])
+df["actionable_patterns"] = df["patterns"].apply(lambda ps: [p for p in ps if p.get("actionable")])
+df["pmg_patterns"] = df["patterns"].apply(lambda ps: [p for p in ps if p.get("name") == "PMG"])
 
 
 def direction(row) -> str:
@@ -217,46 +221,34 @@ def direction(row) -> str:
 df["direction"] = df.apply(direction, axis=1)
 df["is_inside_setup"] = (df["last_label"] == "1") & (df["trigger"].isna())
 df["is_fired"] = df["trigger"].notna()
-df["is_actionable"] = df["is_inside_setup"] | df["is_fired"]
+df["has_pattern"] = df["actionable_patterns"].apply(lambda ps: len(ps) > 0)
+df["is_actionable"] = df["is_inside_setup"] | df["is_fired"] | df["has_pattern"]
 
 # --------------------------------------------------------------------------
-# FTFC -- computed per symbol across ftfc_timeframes, independent of which
-# tab is selected. Entry signal -- a live trigger on an entry timeframe
-# matching the FTFC direction. This mirrors main.py's alert logic exactly,
-# so what you see here is what would have triggered a Telegram/WhatsApp alert.
+# Continuity score -- "X/5" agreement across ftfc_timeframes, computed per
+# symbol+direction. This is bias CONTEXT now, not a strict gate -- matches
+# main.py's compute_continuity_score exactly, so what you see here is what
+# would appear in any alert.
 # --------------------------------------------------------------------------
-continuity_map: dict[str, dict[str, str]] = {}
-for symbol in df["symbol"].unique():
-    sym_df = df[df["symbol"] == symbol]
-    continuity_map[symbol] = {
-        tf: (sym_df[sym_df["timeframe"] == tf]["direction"].iloc[0]
-             if not sym_df[sym_df["timeframe"] == tf].empty else "neutral")
-        for tf in ftfc_timeframes
-    }
+def continuity_score(symbol: str, target_direction: str) -> str:
+    sym_df = df[(df["symbol"] == symbol) & (df["timeframe"].isin(ftfc_timeframes))]
+    if sym_df.empty:
+        return "0/0"
+    agree = (sym_df["direction"] == target_direction).sum()
+    return f"{agree}/{len(sym_df)}"
 
 
-def ftfc_status(symbol: str) -> str:
-    dirs = set(continuity_map.get(symbol, {}).values())
-    if dirs == {"bull"}:
-        return "bull"
-    if dirs == {"bear"}:
-        return "bear"
-    return "mixed"
-
-
-def entry_signal(symbol: str) -> tuple[str, str] | None:
-    """Returns (timeframe, trigger) if an entry timeframe has a trigger
-    matching this symbol's FTFC direction, else None."""
-    status = ftfc_status(symbol)
-    if status == "mixed":
-        return None
-    wanted = "bullish_trigger" if status == "bull" else "bearish_trigger"
-    sym_df = df[df["symbol"] == symbol]
-    for tf in entry_timeframes:
-        row = sym_df[sym_df["timeframe"] == tf]
-        if not row.empty and row.iloc[0]["trigger"] == wanted:
-            return (tf, wanted)
-    return None
+def dominant_direction(symbol: str) -> str:
+    """For display purposes: which direction has more FTFC agreement."""
+    sym_df = df[(df["symbol"] == symbol) & (df["timeframe"].isin(ftfc_timeframes))]
+    if sym_df.empty:
+        return "neutral"
+    counts = sym_df["direction"].value_counts()
+    bull = counts.get("bull", 0)
+    bear = counts.get("bear", 0)
+    if bull == 0 and bear == 0:
+        return "neutral"
+    return "bull" if bull >= bear else "bear"
 
 
 # --------------------------------------------------------------------------
@@ -279,6 +271,23 @@ def render_signal(trigger: str | None) -> str:
     return '<span style="color:#475569;">—</span>'
 
 
+def render_patterns(actionable_patterns: list[dict], pmg_patterns: list[dict]) -> str:
+    if not actionable_patterns and not pmg_patterns:
+        return '<span style="color:#475569;">—</span>'
+    chips = []
+    for p in actionable_patterns:
+        color = "#4ade80" if p["direction"] == "bull" else "#f87171"
+        bg = "#052e1b" if p["direction"] == "bull" else "#2e0a0a"
+        chips.append(
+            f'<span class="badge" style="background:{bg};color:{color};" title="{p.get("note","")}">{p["name"]}</span>'
+        )
+    for p in pmg_patterns:
+        chips.append(
+            f'<span class="badge" style="background:#3f2f12;color:#fbbf24;" title="{p.get("note","")}">⚠ PMG</span>'
+        )
+    return "".join(chips)
+
+
 def format_bar_time(iso_str: str) -> str:
     """Human-readable version of an ISO timestamp. Daily bars land exactly
     on midnight, so just show the date for those; intraday bars show
@@ -293,21 +302,17 @@ def format_bar_time(iso_str: str) -> str:
 
 
 def render_continuity(symbol: str) -> str:
-    dots = "".join(
-        f'<span class="dot" style="background:{DIR_COLOR.get(continuity_map[symbol].get(tf, "neutral"), "#475569")};" '
-        f'title="{tf}"></span>'
-        for tf in ftfc_timeframes
-    )
-    status = ftfc_status(symbol)
-    label_color = DIR_COLOR.get(status, "#94a3b8")
-    label_text = {"bull": "BULL", "bear": "BEAR", "mixed": "MIXED"}[status]
-    return f'{dots}<span class="continuity-label" style="color:{label_color};">{label_text}</span>'
+    direction_for_score = dominant_direction(symbol)
+    score = continuity_score(symbol, direction_for_score)
+    color = DIR_COLOR.get(direction_for_score, "#94a3b8")
+    word = {"bull": "BULL", "bear": "BEAR", "neutral": "FLAT"}[direction_for_score]
+    return f'<span style="color:{color};font-weight:700;">{score}</span> <span style="color:{color};font-size:11px;">{word}</span>'
 
 
 def render_table(rows: pd.DataFrame) -> str:
     header = (
-        f"<tr><th>Ticker</th><th>Price</th><th>Strat Sequence</th><th>Signal</th>"
-        f"<th>FTFC ({'/'.join(ftfc_timeframes)})</th><th>Break ↑</th><th>Break ↓</th><th>Last Bar</th></tr>"
+        "<tr><th>Ticker</th><th>Price</th><th>Strat Sequence</th><th>Signal</th>"
+        "<th>Pattern</th><th>Continuity</th><th>Break ↑</th><th>Break ↓</th><th>Last Bar</th></tr>"
     )
     body_rows = []
     for _, r in rows.iterrows():
@@ -317,6 +322,7 @@ def render_table(rows: pd.DataFrame) -> str:
             f'<td>{r["current_price"]:.2f}</td>'
             f'<td>{render_sequence(r["strat_sequence"])}</td>'
             f'<td>{render_signal(r["trigger"])}</td>'
+            f'<td>{render_patterns(r["actionable_patterns"], r["pmg_patterns"])}</td>'
             f'<td>{render_continuity(r["symbol"])}</td>'
             f'<td>{r["last_completed_high"]:.2f}</td>'
             f'<td>{r["last_completed_low"]:.2f}</td>'
@@ -327,35 +333,50 @@ def render_table(rows: pd.DataFrame) -> str:
 
 
 # --------------------------------------------------------------------------
-# Top section: live confluence signals -- exactly what would have fired an
-# alert. This is the primary view for a 0DTE workflow: FTFC agrees AND an
-# entry timeframe has a live trigger.
+# Top sections: Watch signals (anticipatory, higher timeframes) and Entry
+# signals (the "go" moment, entry timeframes) -- mirrors main.py's alert
+# logic exactly, so this is what would have messaged you on Telegram/WhatsApp.
 # --------------------------------------------------------------------------
-st.subheader("🎯 Live Confluence Signals")
-confluence_rows = []
-for symbol in sorted(df["symbol"].unique()):
-    status = ftfc_status(symbol)
-    sig = entry_signal(symbol)
-    if status != "mixed" and sig is not None:
-        confluence_rows.append((symbol, status, sig))
+def render_signal_card(symbol: str, tf: str, pattern: dict, kind: str) -> None:
+    direction_word = "BULLISH" if pattern["direction"] == "bull" else "BEARISH"
+    emoji = "🟢" if pattern["direction"] == "bull" else "🔴"
+    score = continuity_score(symbol, pattern["direction"])
+    icon = "👀" if kind == "watch" else "🎯"
+    stop_text = f' · stop {pattern["stop_level"]:.2f}' if pattern.get("stop_level") is not None else ""
+    st.markdown(
+        f'<div class="confluence-card {pattern["direction"]}">'
+        f'{icon} <span style="font-size:16px;font-weight:800;color:#f1f5f9;">{emoji} {symbol}</span> '
+        f'<span style="color:{DIR_COLOR[pattern["direction"]]};font-weight:700;">{direction_word} {pattern["name"]}</span> '
+        f'on <b>{tf}</b> · continuity {score}{stop_text}'
+        f'<div style="color:#64748b;font-size:12px;margin-top:4px;">{pattern.get("note","")}</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
-if not confluence_rows:
-    st.caption("No symbol currently has full FTFC agreement *and* a live entry trigger. Check back, or browse by timeframe below.")
-else:
-    for symbol, status, (entry_tf, trigger) in confluence_rows:
-        sym_df = df[(df["symbol"] == symbol) & (df["timeframe"] == entry_tf)]
-        price = sym_df.iloc[0]["current_price"] if not sym_df.empty else None
-        emoji = "🟢" if status == "bull" else "🔴"
-        word = "BULLISH" if status == "bull" else "BEARISH"
-        price_text = f"{price:.2f}" if price is not None else "—"
-        st.markdown(
-            f'<div class="confluence-card {status}">'
-            f'<span style="font-size:16px;font-weight:800;color:#f1f5f9;">{emoji} {symbol}</span> '
-            f'<span style="color:{DIR_COLOR[status]};font-weight:700;">{word} FTFC</span> '
-            f'+ entry trigger on <b>{entry_tf}</b> · price {price_text}'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
+
+st.subheader("👀 Watch Signals")
+st.caption("Named setups forming on the higher timeframes -- anticipatory, no entry trigger yet.")
+watch_rows = df[df["timeframe"].isin(pattern_watch_timeframes)]
+watch_found = False
+for _, r in watch_rows.iterrows():
+    for p in r["actionable_patterns"]:
+        render_signal_card(r["symbol"], r["timeframe"], p, "watch")
+        watch_found = True
+if not watch_found:
+    st.caption("No higher-timeframe setups forming right now.")
+
+st.divider()
+
+st.subheader("🎯 Entry Signals")
+st.caption("Named setups printing directly on your entry timeframes -- the actual \"go\" moment.")
+entry_rows = df[df["timeframe"].isin(entry_timeframes)]
+entry_found = False
+for _, r in entry_rows.iterrows():
+    for p in r["actionable_patterns"]:
+        render_signal_card(r["symbol"], r["timeframe"], p, "entry")
+        entry_found = True
+if not entry_found:
+    st.caption("No entry-timeframe setups right now.")
 
 st.divider()
 
@@ -371,8 +392,13 @@ for tf, tab in zip(all_timeframes, tf_tabs):
             st.info(f"No {tf} data in the latest scan.")
             continue
 
+        badges = []
         if tf in entry_timeframes:
-            st.caption(f"⚡ {tf} is one of your entry timeframes.")
+            badges.append("⚡ entry timeframe")
+        if tf in pattern_watch_timeframes:
+            badges.append("👀 pattern-watch timeframe")
+        if badges:
+            st.caption(" · ".join(badges))
 
         c1, c2, c3, c4, c5, c6 = st.columns(6)
         f_actionable = c1.checkbox("Actionable", key=f"act_{tf}")
@@ -380,7 +406,7 @@ for tf, tab in zip(all_timeframes, tf_tabs):
         f_fired = c3.checkbox("Fired", key=f"fire_{tf}")
         f_bull = c4.checkbox("Bull", key=f"bull_{tf}")
         f_bear = c5.checkbox("Bear", key=f"bear_{tf}")
-        f_ftfc = c6.checkbox("FTFC only", key=f"ftfc_{tf}")
+        f_pattern = c6.checkbox("Has pattern", key=f"pat_{tf}")
 
         if f_actionable:
             tf_df = tf_df[tf_df["is_actionable"]]
@@ -392,28 +418,33 @@ for tf, tab in zip(all_timeframes, tf_tabs):
             tf_df = tf_df[tf_df["direction"] == "bull"]
         if f_bear:
             tf_df = tf_df[tf_df["direction"] == "bear"]
-        if f_ftfc:
-            tf_df = tf_df[tf_df["symbol"].apply(lambda s: ftfc_status(s) != "mixed")]
+        if f_pattern:
+            tf_df = tf_df[tf_df["has_pattern"]]
 
         if tf_df.empty:
             st.info("No rows match the current filters.")
             continue
 
         tf_df = tf_df.sort_values(
-            by=["trigger", "symbol"], key=lambda col: col.isna() if col.name == "trigger" else col
+            by=["has_pattern", "trigger", "symbol"],
+            key=lambda col: col.isna() if col.name == "trigger" else col,
+            ascending=[False, True, True],
         )
         st.markdown(render_table(tf_df), unsafe_allow_html=True)
 
 st.divider()
 with st.expander("Watchlist tickers in this scan"):
     st.write(", ".join(data.get("tickers", [])))
-with st.expander("About FTFC + entry confluence"):
+with st.expander("About Watch / Entry signals and continuity"):
     st.markdown(
-        f"**FTFC** ({', '.join(ftfc_timeframes)}) shows directional bias regardless of "
-        f"which tab you're viewing -- the classic Strat **Full Timeframe Continuity** "
-        f"concept. Green = bullish, red = bearish, gray = neutral/inside-bar/outside-bar.\n\n"
-        f"**Entry timeframes** ({', '.join(entry_timeframes)}) are where actual triggers "
-        f"are checked against the FTFC direction. The **Live Confluence Signals** section "
-        f"at the top shows exactly what would have sent you a Telegram/WhatsApp alert -- "
-        f"FTFC agreement *and* a live trigger on an entry timeframe, matching direction."
+        f"**Watch signals** are named Strat setups (Failed-2, 2-1-2, 3-1-2, 3-2-2, 1-2-2 Rev Strat) forming on "
+        f"the higher timeframes ({', '.join(pattern_watch_timeframes)}) -- anticipatory, before any entry-timeframe "
+        f"trigger exists. **Entry signals** are the same named setups printing directly on your entry timeframes "
+        f"({', '.join(entry_timeframes)}) -- the actual \"go\" moment.\n\n"
+        f"**Continuity** shows how many of the {len(ftfc_timeframes)} FTFC timeframes "
+        f"({', '.join(ftfc_timeframes)}) agree with the dominant direction shown -- bias context, not a strict "
+        f"gate. 4/5 or 5/5 in the alert's direction is a green light; 3/5 means proceed with tighter targets; "
+        f"2/5 or below means wait.\n\n"
+        f"**PMG** (⚠ badge) means 6+ consecutive same-direction bars on that timeframe -- a warning that the move "
+        f"is stretched and due for a snapback, not a standalone entry signal by itself."
     )
