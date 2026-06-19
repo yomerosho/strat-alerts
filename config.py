@@ -118,6 +118,12 @@ class Config:
     # Actual entries are confirmed on these -- a trigger here, matching the
     # FTFC direction, is the "go" signal.
     entry_timeframes: tuple[str, ...] = ("5Min", "15Min")
+    # Named Strat setups (Failed-2, 2-1-2, 3-1-2, 3-2-2, 1-2-2 Rev Strat) on
+    # these timeframes trigger an anticipatory "Watch" alert -- a higher-
+    # timeframe pattern forming, before any lower-timeframe entry trigger
+    # exists. The same patterns appearing directly on an entry timeframe
+    # trigger an "Entry" alert instead (see main.py).
+    pattern_watch_timeframes: tuple[str, ...] = ("1H", "4H", "1D")
 
     # Alpaca silently defaults to IEX-only data (one exchange, ~2-3% of
     # volume) unless told otherwise -- even on paid plans. If you have a

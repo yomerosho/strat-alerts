@@ -32,7 +32,7 @@ from typing import Optional
 
 from config import BASE_DIR, CONFIG, STATE_DB_PATH, add_ticker, load_tickers, remove_ticker
 from scanner import StratScanner, StratState
-from alerting import AlertManager, StateStore, format_confluence_alert
+from alerting import AlertManager, StateStore, format_watch_alert, format_entry_alert
 
 logger = logging.getLogger("strat_scanner.main")
 SNAPSHOT_FILE = BASE_DIR / "latest_scan.json"
@@ -46,27 +46,54 @@ def setup_logging() -> None:
     )
 
 
-def compute_ftfc(states: dict[str, StratState]) -> str:
-    """bull / bear / mixed, based on agreement across CONFIG.ftfc_timeframes."""
-    dirs = {states[tf].direction for tf in CONFIG.ftfc_timeframes if tf in states}
-    if dirs == {"bull"}:
-        return "bull"
-    if dirs == {"bear"}:
-        return "bear"
-    return "mixed"
+TIMEFRAME_ORDER = ["5Min", "15Min", "30Min", "1H", "4H", "1D"]
 
 
-def find_entry_signal(ftfc: str, states: dict[str, StratState]) -> Optional[tuple[str, str]]:
-    """Returns (timeframe, trigger) for the first entry timeframe whose live
-    trigger matches the FTFC direction, or None if there isn't one."""
-    if ftfc == "mixed":
+def next_timeframe_up(timeframe: str) -> Optional[str]:
+    """The next entry in TIMEFRAME_ORDER, or None if already at the top.
+    Used for the classic Strat "broadening" target convention: a signal on
+    one timeframe targets the opposing extreme of the timeframe above it."""
+    try:
+        idx = TIMEFRAME_ORDER.index(timeframe)
+    except ValueError:
         return None
-    wanted = "bullish_trigger" if ftfc == "bull" else "bearish_trigger"
-    for tf in CONFIG.entry_timeframes:
-        state = states.get(tf)
-        if state and state.trigger == wanted:
-            return (tf, wanted)
+    return TIMEFRAME_ORDER[idx + 1] if idx + 1 < len(TIMEFRAME_ORDER) else None
+
+
+def compute_continuity_score(states: dict[str, StratState], direction: str) -> str:
+    """e.g. '4/5' -- how many FTFC timeframes currently agree with `direction`.
+    Reported as context alongside an alert, not used to gate it -- matches
+    the traditional use of FTFC as a bias filter rather than a strict
+    all-or-nothing requirement."""
+    relevant = [tf for tf in CONFIG.ftfc_timeframes if tf in states]
+    if not relevant:
+        return "0/0"
+    agree = sum(1 for tf in relevant if states[tf].direction == direction)
+    return f"{agree}/{len(relevant)}"
+
+
+def compute_target(states: dict[str, StratState], timeframe: str, direction: str) -> Optional[float]:
+    """Target = the next-timeframe-up's opposing extreme. Walks further up
+    if that timeframe's data wasn't available this cycle (e.g. not enough
+    bar history yet)."""
+    nxt = next_timeframe_up(timeframe)
+    while nxt:
+        state = states.get(nxt)
+        if state:
+            return state.last_completed_high if direction == "bull" else state.last_completed_low
+        nxt = next_timeframe_up(nxt)
     return None
+
+
+def find_pmg_note(states: dict[str, StratState]) -> str:
+    """If any timeframe currently shows an active PMG streak, surface it as
+    supporting context on whichever alert is firing -- PMG is a warning
+    flag, never a standalone alert by itself."""
+    for tf, state in states.items():
+        for pattern in state.patterns:
+            if pattern.name == "PMG":
+                return f"{pattern.note} ({tf})"
+    return ""
 
 
 async def evaluate_symbol(
@@ -75,9 +102,20 @@ async def evaluate_symbol(
     store: StateStore,
     symbol: str,
 ) -> list[dict]:
-    """Fetches every configured timeframe for one symbol, computes FTFC +
-    entry-signal confluence, alerts on a fresh confluence event, and
-    returns JSON-serializable snapshots for the dashboard feed."""
+    """Fetches every configured timeframe for one symbol, scans each for
+    named Strat setups (Failed-2, 2-1-2, 3-1-2, 3-2-2, 1-2-2 Rev Strat),
+    and sends:
+      - a WATCH alert when an actionable pattern forms on a higher
+        timeframe (CONFIG.pattern_watch_timeframes) -- anticipatory, before
+        any entry-timeframe trigger exists.
+      - an ENTRY alert when an actionable pattern prints directly on an
+        entry timeframe (CONFIG.entry_timeframes) -- the "go" signal, with
+        a stop from the pattern itself and a target borrowed from the next
+        timeframe up.
+    Each (timeframe, pattern name) combination is debounced and
+    cooldown-gated independently, so multiple distinct patterns firing in
+    the same cycle don't clobber each other's tracking.
+    """
     states: dict[str, StratState] = {}
     for timeframe in CONFIG.timeframes:
         try:
@@ -92,27 +130,54 @@ async def evaluate_symbol(
     if not states:
         return []
 
-    ftfc = compute_ftfc(states)
-    entry_signal = find_entry_signal(ftfc, states)
+    pmg_note = find_pmg_note(states)
 
-    setup_key = f"ftfc={ftfc}|entry={entry_signal}"
-    last_key = store.get_last_setup_key(symbol, "CONFLUENCE")
-    if setup_key != last_key:
-        if entry_signal is not None:
-            minutes_since = store.minutes_since_last_alert(symbol, "CONFLUENCE")
-            in_cooldown = minutes_since is not None and minutes_since < CONFIG.alert_cooldown_minutes
-            if in_cooldown:
-                logger.info(
-                    "Suppressing alert for %s (cooldown: %.1f/%d min) -- %s",
-                    symbol, minutes_since, CONFIG.alert_cooldown_minutes, setup_key,
-                )
-            else:
-                entry_tf, trigger = entry_signal
-                message = format_confluence_alert(symbol, ftfc, entry_tf, trigger, states, CONFIG.ftfc_timeframes)
-                logger.info("Confluence alert for %s: %s", symbol, setup_key)
-                await alert_manager.send(message)
-                store.record_alert_sent(symbol, "CONFLUENCE")
-        store.set_last_setup_key(symbol, "CONFLUENCE", setup_key)
+    async def maybe_send(tf: str, pattern, alert_kind: str, message: str) -> None:
+        # Pattern name included in the store key -- distinct patterns on the
+        # same timeframe must never share debounce/cooldown tracking.
+        store_key = f"{alert_kind}:{tf}:{pattern.name}"
+        setup_key = f"{pattern.direction}"
+        last_key = store.get_last_setup_key(symbol, store_key)
+        if setup_key == last_key:
+            return
+
+        minutes_since = store.minutes_since_last_alert(symbol, store_key)
+        in_cooldown = minutes_since is not None and minutes_since < CONFIG.alert_cooldown_minutes
+        if in_cooldown:
+            logger.info(
+                "Suppressing %s alert for %s [%s/%s] (cooldown %.1f/%d min)",
+                alert_kind, symbol, tf, pattern.name, minutes_since, CONFIG.alert_cooldown_minutes,
+            )
+        else:
+            logger.info("%s alert for %s [%s/%s]: %s", alert_kind, symbol, tf, pattern.name, setup_key)
+            await alert_manager.send(message)
+            store.record_alert_sent(symbol, store_key)
+        store.set_last_setup_key(symbol, store_key, setup_key)
+
+    # WATCH -- anticipatory, on the higher timeframes
+    for tf in CONFIG.pattern_watch_timeframes:
+        state = states.get(tf)
+        if not state:
+            continue
+        for pattern in state.patterns:
+            if not pattern.actionable:
+                continue
+            score = compute_continuity_score(states, pattern.direction)
+            message = format_watch_alert(symbol, tf, pattern, score, pmg_note)
+            await maybe_send(tf, pattern, "WATCH", message)
+
+    # ENTRY -- the actual "go" signal, on the entry timeframes
+    for tf in CONFIG.entry_timeframes:
+        state = states.get(tf)
+        if not state:
+            continue
+        for pattern in state.patterns:
+            if not pattern.actionable:
+                continue
+            target = compute_target(states, tf, pattern.direction)
+            score = compute_continuity_score(states, pattern.direction)
+            message = format_entry_alert(symbol, tf, pattern, target, score, pmg_note)
+            await maybe_send(tf, pattern, "ENTRY", message)
 
     return [state.to_dict() for state in states.values()]
 
@@ -146,6 +211,7 @@ def write_snapshot_file(tickers: list[str], snapshots: list[dict]) -> None:
         "timeframes": list(CONFIG.timeframes),
         "ftfc_timeframes": list(CONFIG.ftfc_timeframes),
         "entry_timeframes": list(CONFIG.entry_timeframes),
+        "pattern_watch_timeframes": list(CONFIG.pattern_watch_timeframes),
         "states": snapshots,
     }
     SNAPSHOT_FILE.write_text(json.dumps(payload, indent=2))

@@ -45,6 +45,27 @@ MARKET_OPEN_MINUTE = 30
 
 
 @dataclass(frozen=True)
+class DetectedPattern:
+    """A named Strat setup detected as of the most recently completed bar.
+    `actionable=False` is used for PMG, which is a warning/context flag,
+    not a standalone entry signal."""
+    name: str             # "Failed-2", "2-1-2", "3-1-2", "3-2-2", "1-2-2 Rev Strat", "PMG"
+    direction: str        # "bull" or "bear"
+    stop_level: Optional[float]
+    actionable: bool
+    note: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "name": self.name,
+            "direction": self.direction,
+            "stop_level": self.stop_level,
+            "actionable": self.actionable,
+            "note": self.note,
+        }
+
+
+@dataclass(frozen=True)
 class StratState:
     """Snapshot of a symbol's Strat status on one timeframe."""
     symbol: str
@@ -55,13 +76,15 @@ class StratState:
     last_completed_low: float
     current_price: float
     trigger: Optional[str]  # "bullish_trigger" | "bearish_trigger" | None
+    patterns: tuple[DetectedPattern, ...] = ()
 
     @property
     def setup_key(self) -> str:
         """A compact string used for debounce comparisons -- changes only
         when something alert-worthy actually changes."""
         trig = self.trigger or "none"
-        return f"{self.last_three_labels}|{trig}"
+        pattern_sig = ",".join(f"{p.name}:{p.direction}" for p in self.patterns)
+        return f"{self.last_three_labels}|{trig}|{pattern_sig}"
 
     def to_dict(self) -> dict:
         """JSON-serializable snapshot, used for the dashboard's data feed."""
@@ -74,6 +97,7 @@ class StratState:
             "last_completed_low": self.last_completed_low,
             "current_price": self.current_price,
             "trigger": self.trigger,
+            "patterns": [p.to_dict() for p in self.patterns],
         }
 
     @property
@@ -127,6 +151,113 @@ def detect_trigger(df: pd.DataFrame, current_price: float) -> Optional[str]:
     if current_price < last["low"]:
         return "bearish_trigger"
     return None
+
+
+def detect_patterns(completed: pd.DataFrame) -> tuple["DetectedPattern", ...]:
+    """
+    Scans the tail of a completed (fully closed) bars dataframe for named
+    Strat setups, as of the most recently completed bar. `completed` must
+    have 'high', 'low', 'close', 'strat_label' columns, sorted oldest -> newest.
+
+    Patterns, in the order checked (matches the traditional priority --
+    Failed-2 first, PMG last as a warning-only flag):
+      - Failed-2 (F2U/F2D): a 2U/2D bar fails and reverses through its own
+        range on the very next bar. Stop = the failed bar's own extreme.
+      - 2-1-2: directional -> inside -> directional. Same direction twice =
+        continuation; opposite = reversal. Stop = the inside bar's far edge.
+      - 3-1-2: outside -> inside -> directional break. Same stop logic.
+      - 3-2-2: outside -> two same-direction bars. Stop = the outside bar's
+        far edge (the bigger range, since the outside bar defines structure).
+      - 1-2-2 Rev Strat: inside -> two same-direction bars, counter to the
+        bar immediately before the inside bar (a simple one-bar trend-context
+        check -- a real trend filter would look back further, but this is
+        a reasonable first pass).
+      - PMG ("Pivot Machine Gun"): 6+ consecutive same-direction 2-bars.
+        Warning that the move is stretched, not a standalone entry signal
+        (actionable=False) -- traditionally used as reversal context, not
+        traded by itself.
+    """
+    patterns: list[DetectedPattern] = []
+    labels = list(completed["strat_label"].fillna("?"))
+    n = len(labels)
+    if n < 2:
+        return tuple(patterns)
+
+    last_bar = completed.iloc[-1]
+    prev_bar = completed.iloc[-2]
+
+    # --- Failed-2 (F2U / F2D) ---
+    if labels[-2] == "2U" and last_bar["close"] < prev_bar["low"]:
+        patterns.append(DetectedPattern(
+            "Failed-2", "bear", stop_level=float(prev_bar["high"]), actionable=True,
+            note="2U failed -- breakout buyers trapped, reversing down",
+        ))
+    if labels[-2] == "2D" and last_bar["close"] > prev_bar["high"]:
+        patterns.append(DetectedPattern(
+            "Failed-2", "bull", stop_level=float(prev_bar["low"]), actionable=True,
+            note="2D failed -- breakdown sellers trapped, reversing up",
+        ))
+
+    if n >= 3:
+        a, b, c = labels[-3], labels[-2], labels[-1]
+        bar_a, bar_b = completed.iloc[-3], completed.iloc[-2]
+
+        # --- 2-1-2 ---
+        if a in ("2U", "2D") and b == "1" and c in ("2U", "2D"):
+            direction = "bull" if c == "2U" else "bear"
+            stop_level = float(bar_b["low"]) if direction == "bull" else float(bar_b["high"])
+            kind = "continuation" if a == c else "reversal"
+            patterns.append(DetectedPattern(
+                "2-1-2", direction, stop_level=stop_level, actionable=True, note=f"2-1-2 {kind}",
+            ))
+
+        # --- 3-1-2 ---
+        if a == "3" and b == "1" and c in ("2U", "2D"):
+            direction = "bull" if c == "2U" else "bear"
+            stop_level = float(bar_b["low"]) if direction == "bull" else float(bar_b["high"])
+            patterns.append(DetectedPattern(
+                "3-1-2", direction, stop_level=stop_level, actionable=True,
+                note="Outside bar, inside bar, directional break",
+            ))
+
+        # --- 3-2-2 ---
+        if a == "3" and b == c and b in ("2U", "2D"):
+            direction = "bull" if b == "2U" else "bear"
+            stop_level = float(bar_a["low"]) if direction == "bull" else float(bar_a["high"])
+            patterns.append(DetectedPattern(
+                "3-2-2", direction, stop_level=stop_level, actionable=True,
+                note="Outside bar range resolved directionally, twice",
+            ))
+
+        # --- 1-2-2 Rev Strat (counter-trend check against the bar before the inside bar) ---
+        if a == "1" and b == c and b in ("2U", "2D") and n >= 4:
+            direction = "bull" if b == "2U" else "bear"
+            prior_label = labels[-4]
+            opposite = "2D" if direction == "bull" else "2U"
+            if prior_label == opposite:
+                stop_level = float(bar_a["low"]) if direction == "bull" else float(bar_a["high"])
+                patterns.append(DetectedPattern(
+                    "1-2-2 Rev Strat", direction, stop_level=stop_level, actionable=True,
+                    note="Counter-trend reversal off an inside bar",
+                ))
+
+    # --- PMG ("Pivot Machine Gun"): 6+ consecutive same-direction 2-bars ---
+    streak_label = None
+    streak_len = 0
+    for lbl in reversed(labels):
+        if lbl in ("2U", "2D") and (streak_label is None or lbl == streak_label):
+            streak_label = lbl
+            streak_len += 1
+        else:
+            break
+    if streak_len >= 6:
+        direction = "bull" if streak_label == "2U" else "bear"
+        patterns.append(DetectedPattern(
+            "PMG", direction, stop_level=None, actionable=False,
+            note=f"{streak_len} consecutive {streak_label} bars -- stretched, watch for a snapback",
+        ))
+
+    return tuple(patterns)
 
 
 INTRADAY_DURATIONS = {
@@ -273,6 +404,7 @@ class StratScanner:
             return None
 
         last_three = tuple(completed["strat_label"].iloc[-3:].fillna("?"))
+        patterns = detect_patterns(completed)
 
         return StratState(
             symbol=symbol,
@@ -283,4 +415,5 @@ class StratScanner:
             last_completed_low=float(completed["low"].iloc[-1]),
             current_price=current_price,
             trigger=trigger,
+            patterns=patterns,
         )

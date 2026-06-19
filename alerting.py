@@ -178,30 +178,55 @@ class AlertManager:
             logger.exception("Error sending WhatsApp alert to %s", to_number)
 
 
-def format_confluence_alert(
+def format_watch_alert(
     symbol: str,
-    ftfc: str,
-    entry_tf: str,
-    trigger: str,
-    states: dict,  # dict[str, scanner.StratState] -- avoiding circular import in type hints
-    ftfc_timeframes: list,
+    timeframe: str,
+    pattern,  # scanner.DetectedPattern -- avoiding circular import in type hints
+    continuity_score: str,
+    pmg_note: str = "",
 ) -> str:
-    """A confluence alert: FTFC direction agrees across the higher
-    timeframes AND a live trigger just fired on the entry timeframe in
-    that same direction -- the actual "go" signal for a 0DTE-style entry."""
-    direction_emoji = "🟢" if ftfc == "bull" else "🔴"
-    direction_word = "BULLISH" if ftfc == "bull" else "BEARISH"
+    """Anticipatory alert: a named Strat setup just formed on a higher
+    timeframe (1H/4H/1D by default). No entry timeframe trigger yet --
+    this is the "get your chart open" signal, sent once per fresh setup."""
+    emoji = "🟢" if pattern.direction == "bull" else "🔴"
+    word = "BULLISH" if pattern.direction == "bull" else "BEARISH"
+    lines = [
+        f"👀 {emoji} **{symbol}** [{timeframe}] — {word} {pattern.name} forming",
+        pattern.note,
+        f"Continuity: {continuity_score} timeframes agree {word.lower()}",
+    ]
+    if pattern.stop_level is not None:
+        lines.append(f"Stop reference: {pattern.stop_level:.2f}")
+    lines.append("Watch your 5m/15m now for the entry trigger.")
+    if pmg_note:
+        lines.append(f"⚠️ {pmg_note}")
+    return "\n".join(lines)
 
-    ftfc_summary = " · ".join(
-        f"{tf}:{states[tf].direction}" for tf in ftfc_timeframes if tf in states
-    )
-    entry_state = states[entry_tf]
-    arrow = "↑" if trigger == "bullish_trigger" else "↓"
-    level = entry_state.last_completed_high if trigger == "bullish_trigger" else entry_state.last_completed_low
 
-    return (
-        f"{direction_emoji} **{symbol}** — {direction_word} FTFC + entry trigger on {entry_tf}\n"
-        f"Price {entry_state.current_price:.2f} broke {arrow} {level:.2f}\n"
-        f"FTFC: {ftfc_summary}\n"
-        f"Check your 5m/15m chart now to confirm entry."
-    )
+def format_entry_alert(
+    symbol: str,
+    timeframe: str,
+    pattern,  # scanner.DetectedPattern
+    target: Optional[float],
+    continuity_score: str,
+    pmg_note: str = "",
+) -> str:
+    """The actual "go" alert: a named Strat setup printed directly on an
+    entry timeframe (5Min/15Min by default), with a stop derived from the
+    pattern itself and a target borrowed from the next timeframe up."""
+    emoji = "🟢" if pattern.direction == "bull" else "🔴"
+    word = "BULLISH" if pattern.direction == "bull" else "BEARISH"
+    lines = [
+        f"🎯 {emoji} **{symbol}** [{timeframe}] — {word} {pattern.name} ENTRY",
+        pattern.note,
+        f"Continuity: {continuity_score} timeframes agree {word.lower()}",
+    ]
+    if pattern.stop_level is not None:
+        lines.append(f"Stop: {pattern.stop_level:.2f}")
+    if target is not None:
+        lines.append(f"Target: {target:.2f} (next higher timeframe's level)")
+    else:
+        lines.append("Target: no higher-timeframe data available -- use your own judgment")
+    if pmg_note:
+        lines.append(f"⚠️ {pmg_note}")
+    return "\n".join(lines)
