@@ -29,7 +29,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-        - name: Debug check secrets (masked - safe to share)
+      - name: Debug check secrets (masked - safe to share)
         run: |
           echo "ALPACA_API_KEY length: ${#ALPACA_API_KEY}"
           echo "ALPACA_SECRET_KEY length: ${#ALPACA_SECRET_KEY}"
