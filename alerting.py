@@ -8,6 +8,7 @@ StateStore: SQLite-backed "last known state" so alerts only fire once per
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import sqlite3
 from contextlib import contextmanager
@@ -121,53 +122,60 @@ class AlertManager:
     def __init__(
         self,
         telegram_bot_token: str = "",
-        telegram_chat_id: str = "",
+        telegram_chat_id: Optional[list] = None,
         twilio_account_sid: str = "",
         twilio_auth_token: str = "",
         twilio_whatsapp_from: str = "",
-        twilio_whatsapp_to: str = "",
+        twilio_whatsapp_to: Optional[list] = None,
     ):
         self.telegram_bot_token = telegram_bot_token
-        self.telegram_chat_id = telegram_chat_id
+        self.telegram_chat_ids = telegram_chat_id or []
         self.twilio_account_sid = twilio_account_sid
         self.twilio_auth_token = twilio_auth_token
         self.twilio_whatsapp_from = twilio_whatsapp_from
-        self.twilio_whatsapp_to = twilio_whatsapp_to
+        self.twilio_whatsapp_to_numbers = twilio_whatsapp_to or []
 
     async def send(self, message: str) -> None:
         async with aiohttp.ClientSession() as session:
-            if self.telegram_bot_token and self.telegram_chat_id:
-                await self._send_telegram(session, message)
-            if self.twilio_account_sid and self.twilio_auth_token and self.twilio_whatsapp_from and self.twilio_whatsapp_to:
-                await self._send_whatsapp(session, message)
+            tasks = []
+            if self.telegram_bot_token:
+                for chat_id in self.telegram_chat_ids:
+                    tasks.append(self._send_telegram(session, chat_id, message))
+            if self.twilio_account_sid and self.twilio_auth_token and self.twilio_whatsapp_from:
+                for to_number in self.twilio_whatsapp_to_numbers:
+                    tasks.append(self._send_whatsapp(session, to_number, message))
+            if tasks:
+                await asyncio.gather(*tasks)
 
-    async def _send_telegram(self, session: aiohttp.ClientSession, message: str) -> None:
+    async def _send_telegram(self, session: aiohttp.ClientSession, chat_id: str, message: str) -> None:
         url = f"https://api.telegram.org/bot{self.telegram_bot_token}/sendMessage"
-        payload = {"chat_id": self.telegram_chat_id, "text": message, "parse_mode": "Markdown"}
+        payload = {"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}
         try:
             async with session.post(url, json=payload, timeout=10) as resp:
                 if resp.status >= 300:
-                    logger.error("Telegram send failed (%s): %s", resp.status, await resp.text())
+                    logger.error("Telegram send to %s failed (%s): %s", chat_id, resp.status, await resp.text())
         except Exception:
-            logger.exception("Error sending Telegram alert")
+            logger.exception("Error sending Telegram alert to %s", chat_id)
 
-    async def _send_whatsapp(self, session: aiohttp.ClientSession, message: str) -> None:
+    async def _send_whatsapp(self, session: aiohttp.ClientSession, to_number: str, message: str) -> None:
         """Sends via Twilio's WhatsApp API. Requires a Twilio account with a
         WhatsApp-enabled sender (sandbox for testing, or an approved
-        WhatsApp Business sender for production)."""
+        WhatsApp Business sender for production). Each recipient must have
+        individually joined the sandbox (or be approved on a production
+        sender) -- there's no WhatsApp group equivalent here."""
         url = f"https://api.twilio.com/2010-04-01/Accounts/{self.twilio_account_sid}/Messages.json"
         auth = aiohttp.BasicAuth(self.twilio_account_sid, self.twilio_auth_token)
         data = {
             "From": self.twilio_whatsapp_from,
-            "To": self.twilio_whatsapp_to,
+            "To": to_number,
             "Body": message,
         }
         try:
             async with session.post(url, data=data, auth=auth, timeout=10) as resp:
                 if resp.status >= 300:
-                    logger.error("WhatsApp (Twilio) send failed (%s): %s", resp.status, await resp.text())
+                    logger.error("WhatsApp send to %s failed (%s): %s", to_number, resp.status, await resp.text())
         except Exception:
-            logger.exception("Error sending WhatsApp alert")
+            logger.exception("Error sending WhatsApp alert to %s", to_number)
 
 
 def format_confluence_alert(

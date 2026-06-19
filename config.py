@@ -76,6 +76,12 @@ def remove_ticker(symbol: str) -> list[str]:
     return tickers
 
 
+def parse_recipient_list(env_value: str) -> list[str]:
+    """Splits a comma-separated env var into a clean list of recipients.
+    Supports a single value with no commas (the common case) the same way."""
+    return [item.strip() for item in env_value.split(",") if item.strip()]
+
+
 @dataclass
 class Config:
     # --- Alpaca credentials (data-only key works fine; no trading needed) ---
@@ -84,14 +90,23 @@ class Config:
 
     # --- Alerting ---
     telegram_bot_token: str = field(default_factory=lambda: os.getenv("TELEGRAM_BOT_TOKEN", ""))
-    telegram_chat_id: str = field(default_factory=lambda: os.getenv("TELEGRAM_CHAT_ID", ""))
+    # Comma-separated for multiple recipients, e.g. "111111,222222". A single
+    # value with no commas works the same as before. For a Telegram GROUP
+    # instead, just use the group's chat ID here -- one entry, no commas
+    # needed, since the group itself fans out to its members.
+    telegram_chat_id: list[str] = field(default_factory=lambda: parse_recipient_list(os.getenv("TELEGRAM_CHAT_ID", "")))
 
     # WhatsApp via Twilio (https://www.twilio.com/whatsapp) -- needs a Twilio
     # account with the WhatsApp sandbox/sender enabled.
     twilio_account_sid: str = field(default_factory=lambda: os.getenv("TWILIO_ACCOUNT_SID", ""))
     twilio_auth_token: str = field(default_factory=lambda: os.getenv("TWILIO_AUTH_TOKEN", ""))
     twilio_whatsapp_from: str = field(default_factory=lambda: os.getenv("TWILIO_WHATSAPP_FROM", ""))  # e.g. "whatsapp:+14155238886"
-    twilio_whatsapp_to: str = field(default_factory=lambda: os.getenv("TWILIO_WHATSAPP_TO", ""))      # e.g. "whatsapp:+15551234567"
+    # Comma-separated for multiple recipients, e.g.
+    # "whatsapp:+15551234567,whatsapp:+15557654321". Each number must have
+    # individually joined the Twilio sandbox (or be an approved recipient on
+    # a production WhatsApp sender) -- there's no WhatsApp group equivalent
+    # here, so every recipient needs their own onboarding step.
+    twilio_whatsapp_to: list[str] = field(default_factory=lambda: parse_recipient_list(os.getenv("TWILIO_WHATSAPP_TO", "")))
 
     # --- Scan behavior ---
     scan_interval_seconds: int = field(default_factory=lambda: int(os.getenv("SCAN_INTERVAL_SECONDS", "60")))
