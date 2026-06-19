@@ -20,6 +20,7 @@ Required secrets (Streamlit Cloud: App settings -> Secrets):
 
 from __future__ import annotations
 
+import time
 from datetime import datetime, timezone
 
 import pandas as pd
@@ -140,9 +141,17 @@ if not check_password():
 # --------------------------------------------------------------------------
 # Data fetch
 # --------------------------------------------------------------------------
-@st.cache_data(ttl=30, show_spinner=False)
-def fetch_snapshot(owner: str, repo: str, branch: str) -> dict | None:
-    url = f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/latest_scan.json"
+@st.cache_data(ttl=0, show_spinner=False)
+def fetch_snapshot(owner: str, repo: str, branch: str, _bust: int = 0) -> dict | None:
+    # _bust is a timestamp passed in on every call so Streamlit never
+    # serves a cached version. The real CDN cache-bust happens via the
+    # ?nocache= query param on the GitHub raw URL -- without it, GitHub's
+    # CDN can serve a stale file for 5-10 minutes after a new commit even
+    # if you hit "Refresh now".
+    url = (
+        f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/latest_scan.json"
+        f"?nocache={_bust}"
+    )
     try:
         resp = requests.get(url, timeout=10)
         resp.raise_for_status()
@@ -166,9 +175,9 @@ with col_title:
     st.caption("THE STRAT · FTFC CONFLUENCE · 5m / 15m / 30m / 1H / 4H / 1D")
 with col_refresh:
     if st.button("🔄 Refresh now"):
-        fetch_snapshot.clear()
+        fetch_snapshot.clear()  # also forces a new _bust value on next call
 
-data = fetch_snapshot(owner, repo, branch)
+data = fetch_snapshot(owner, repo, branch, _bust=int(time.time()))
 
 if not data:
     st.warning(
@@ -184,6 +193,12 @@ all_timeframes = data.get("timeframes", ["5Min", "15Min", "30Min", "1H", "4H", "
 ftfc_timeframes = data.get("ftfc_timeframes", ["15Min", "30Min", "1H", "4H", "1D"])
 entry_timeframes = data.get("entry_timeframes", ["5Min", "15Min"])
 pattern_watch_timeframes = data.get("pattern_watch_timeframes", ["1H", "4H", "1D"])
+
+# Continuity thresholds -- must match config.py exactly so the dashboard
+# shows only signals that would actually send a Telegram alert.
+min_continuity_watch = data.get("min_continuity_watch", 4)
+min_continuity_entry = data.get("min_continuity_entry", 4)
+min_continuity_entry_failed2 = data.get("min_continuity_entry_failed2", 3)
 
 try:
     gen_dt = datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
@@ -360,29 +375,49 @@ def render_signal_card(symbol: str, tf: str, pattern: dict, kind: str) -> None:
     )
 
 
+def passes_threshold(pattern: dict, kind: str, score: str) -> bool:
+    """Mirrors main.py's threshold logic exactly -- only show signals on the
+    dashboard that would actually send a Telegram alert."""
+    try:
+        agree = int(score.split("/")[0])
+    except (ValueError, IndexError):
+        agree = 0
+    if kind == "watch":
+        return agree >= min_continuity_watch
+    if pattern.get("name") == "Failed-2":
+        return agree >= min_continuity_entry_failed2
+    return agree >= min_continuity_entry
+
+
 st.subheader("👀 Watch Signals")
-st.caption("Named setups forming on the higher timeframes -- anticipatory, no entry trigger yet.")
+st.caption("Named setups forming on the higher timeframes — anticipatory, no entry trigger yet.")
 watch_rows = df[df["timeframe"].isin(pattern_watch_timeframes)]
 watch_found = False
 for _, r in watch_rows.iterrows():
     for p in r["actionable_patterns"]:
+        score = continuity_score(r["symbol"], p["direction"])
+        if not passes_threshold(p, "watch", score):
+            continue
         render_signal_card(r["symbol"], r["timeframe"], p, "watch")
         watch_found = True
 if not watch_found:
-    st.caption("No higher-timeframe setups forming right now.")
+    st.caption("No higher-timeframe setups meeting the continuity threshold right now.")
 
 st.divider()
 
 st.subheader("🎯 Entry Signals")
-st.caption("Named setups printing directly on your entry timeframes -- the actual \"go\" moment.")
+st.caption("Named setups printing directly on your entry timeframes — the actual \"go\" moment.")
 entry_rows = df[df["timeframe"].isin(entry_timeframes)]
 entry_found = False
 for _, r in entry_rows.iterrows():
     for p in r["actionable_patterns"]:
+        score = continuity_score(r["symbol"], p["direction"])
+        if not passes_threshold(p, "entry", score):
+            continue
         render_signal_card(r["symbol"], r["timeframe"], p, "entry")
         entry_found = True
 if not entry_found:
-    st.caption("No entry-timeframe setups right now.")
+    st.caption("No entry-timeframe setups meeting the continuity threshold right now.")
 
 st.divider()
 
