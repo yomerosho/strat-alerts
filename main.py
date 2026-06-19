@@ -27,7 +27,7 @@ import asyncio
 import json
 import logging
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from config import BASE_DIR, CONFIG, STATE_DB_PATH, add_ticker, load_tickers, remove_ticker
@@ -230,7 +230,7 @@ def write_snapshot_file(tickers: list[str], snapshots: list[dict]) -> None:
     """Writes the dashboard's data feed: every symbol/timeframe's current
     Strat state, regardless of whether it triggered an alert this cycle."""
     payload = {
-        "generated_at_utc": datetime.utcnow().isoformat() + "Z",
+        "generated_at_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "tickers": tickers,
         "timeframes": list(CONFIG.timeframes),
         "ftfc_timeframes": list(CONFIG.ftfc_timeframes),
