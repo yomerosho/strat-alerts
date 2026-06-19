@@ -24,7 +24,7 @@ import pandas as pd
 import requests
 import streamlit as st
 
-st.set_page_config(page_title="OBI Strat Scanner", page_icon="📊", layout="wide")
+st.set_page_config(page_title="Strat Scanner", page_icon="📊", layout="wide")
 
 STRAT_LABEL_COLORS = {
     "1": "#a78bfa",   # inside bar -- purple
@@ -41,7 +41,7 @@ def check_password() -> bool:
     if st.session_state.get("authenticated"):
         return True
 
-    st.title("📊 OBI Strat Scanner")
+    st.title("📊 Strat Scanner")
     pwd = st.text_input("Password", type="password")
     if st.button("Unlock") or pwd:
         expected = st.secrets.get("APP_PASSWORD")
@@ -85,7 +85,7 @@ if not owner or not repo:
 
 col_title, col_refresh = st.columns([5, 1])
 with col_title:
-    st.title("📊 OBI Strat Scanner")
+    st.title("📊 Strat Scanner")
     st.caption("THE STRAT · CONTINUITY · LIVE 4H / DAILY / WEEKLY / MONTHLY")
 with col_refresh:
     if st.button("🔄 Refresh now"):
