@@ -1,0 +1,21 @@
+[Unit]
+Description=OBI Strat Scanner (The Strat pattern alerting service)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Adjust these paths to match your VPS deployment
+User=strat
+WorkingDirectory=/opt/strat-scanner
+EnvironmentFile=/opt/strat-scanner/.env
+ExecStart=/opt/strat-scanner/venv/bin/python /opt/strat-scanner/main.py
+Restart=on-failure
+RestartSec=10
+
+# Keep logs flowing to journalctl -u strat-scanner -f
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

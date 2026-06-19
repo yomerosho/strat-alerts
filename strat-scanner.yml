@@ -1,0 +1,62 @@
+name: Strat Scanner
+
+on:
+  schedule:
+    # Every 15 minutes. GitHub Actions cron timing isn't exact -- runs can
+    # be delayed a few minutes during high platform load. Fine for personal
+    # use; not fine if you need second-precision triggers.
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}  # lets you click "Run workflow" manually in the Actions tab
+
+permissions:
+  contents: write  # needed so the workflow can commit the updated state DB back to the repo
+
+concurrency:
+  group: strat-scanner
+  cancel-in-progress: false  # never cancel a mid-flight scan; let it finish and let the next one queue
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run one scan cycle
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_WHATSAPP_FROM: ${{ secrets.TWILIO_WHATSAPP_FROM }}
+          TWILIO_WHATSAPP_TO: ${{ secrets.TWILIO_WHATSAPP_TO }}
+          LOG_LEVEL: INFO
+        run: python main.py --once
+
+      - name: Persist debounce state back to the repo
+        # The runner is a fresh VM every time, so scanner_state.db (and any
+        # tickers.txt edits made via --add-ticker) only survive between runs
+        # if we commit them back. Without this step you'd get a duplicate
+        # alert every single run.
+        run: |
+          git config user.name "strat-scanner-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add scanner_state.db tickers.txt latest_scan.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Update scanner state [skip ci]"
+            git push
+          else
+            echo "No state changes to commit."
+          fi
