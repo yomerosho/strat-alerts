@@ -2,10 +2,14 @@ name: Strat Scanner
 
 on:
   schedule:
-    # Every 15 minutes. GitHub Actions cron timing isn't exact -- runs can
-    # be delayed a few minutes during high platform load. Fine for personal
-    # use; not fine if you need second-precision triggers.
-    - cron: "*/15 * * * *"
+    # Every 5 minutes -- the fastest practical interval for free GitHub
+    # Actions cron. Note: GitHub doesn't guarantee exact timing; during
+    # high platform load this can slip by a few minutes. For a strategy
+    # where you're in and out within 30 minutes, treat this as a
+    # confluence/heads-up signal to go check your 5m/15m chart yourself --
+    # not a guaranteed instant trigger. If you need tighter timing, the
+    # VPS continuous-loop mode (see README) can poll every 30-60 seconds.
+    - cron: "*/5 * * * *"
   workflow_dispatch: {}  # lets you click "Run workflow" manually in the Actions tab
 
 permissions:
@@ -37,6 +41,7 @@ jobs:
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
           ALPACA_DATA_FEED: ${{ secrets.ALPACA_DATA_FEED }}
+          ALERT_COOLDOWN_MINUTES: ${{ secrets.ALERT_COOLDOWN_MINUTES }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
