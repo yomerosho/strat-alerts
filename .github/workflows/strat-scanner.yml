@@ -50,7 +50,7 @@ jobs:
         run: python main.py --once
 
       - name: Persist debounce state back to the repo
-        # The runner is a fresh VM every time, so scanner_state.db (and any
+        # The runner is a fresh VM every time, so scanner_state.db (and any 
         # tickers.txt edits made via --add-ticker) only survive between runs
         # if we commit them back. Without this step you'd get a duplicate
         # alert every single run.
