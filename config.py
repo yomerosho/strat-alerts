@@ -106,7 +106,12 @@ class Config:
     ftfc_timeframes: tuple[str, ...] = ("15Min", "30Min", "1H", "4H", "1D")
     # Actual entries are confirmed on these -- a trigger here, matching the
     # FTFC direction, is the "go" signal.
-    entry_timeframes: tuple[str, ...] = ("5Min", "15Min")
+    # Actual entries are confirmed on these -- a trigger here, matching the
+    # FTFC direction, is the "go" signal. 5Min removed intentionally:
+    # 5-minute patterns fire too frequently, lag through cron timing, and
+    # produce noise that buries the higher-quality 15-minute signals.
+    # Use the 5m chart manually to time your actual entry after a 15Min alert fires.
+    entry_timeframes: tuple[str, ...] = ("15Min",)
     # Named Strat setups (Failed-2, 2-1-2, 3-1-2, 3-2-2, 1-2-2 Rev Strat) on
     # these timeframes trigger an anticipatory "Watch" alert -- a higher-
     # timeframe pattern forming, before any lower-timeframe entry trigger
