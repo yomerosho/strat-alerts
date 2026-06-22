@@ -1,10 +1,9 @@
 {
-  "generated_at_utc": "2026-06-22T13:00:13.310532Z",
+  "generated_at_utc": "2026-06-22T14:53:32.264804Z",
   "tickers": [
     "SPY",
     "QQQ",
     "IWM",
-    "DIA",
     "AAPL",
     "AMD",
     "AMZN",
@@ -14,7 +13,8 @@
     "MSFT",
     "NVDA",
     "PLTR",
-    "TSLA"
+    "TSLA",
+    "INTC"
   ],
   "timeframes": [
     "5Min",
@@ -47,36 +47,51 @@
     {
       "symbol": "SPY",
       "timeframe": "5Min",
-      "last_bar_time": "2026-06-22T08:55:00-04:00",
+      "last_bar_time": "2026-06-22T10:45:00-04:00",
       "last_three_labels": [
         "2D",
         "2D",
-        "2D"
+        "1"
       ],
-      "last_completed_high": 747.34,
-      "last_completed_low": 747.17,
-      "current_price": 747.19,
-      "trigger": null,
+      "last_completed_high": 745.32,
+      "last_completed_low": 744.49,
+      "current_price": 744.46,
+      "trigger": "bearish_trigger",
       "patterns": []
     },
     {
       "symbol": "SPY",
       "timeframe": "15Min",
-      "last_bar_time": "2026-06-22T08:45:00-04:00",
+      "last_bar_time": "2026-06-22T10:30:00-04:00",
       "last_three_labels": [
-        "3",
         "2U",
+        "2D",
         "2D"
       ],
-      "last_completed_high": 747.5,
-      "last_completed_low": 747.17,
-      "current_price": 747.19,
+      "last_completed_high": 746.61,
+      "last_completed_low": 744.445,
+      "current_price": 744.46,
       "trigger": null,
+      "patterns": []
+    },
+    {
+      "symbol": "SPY",
+      "timeframe": "30Min",
+      "last_bar_time": "2026-06-22T10:00:00-04:00",
+      "last_three_labels": [
+        "2U",
+        "2U",
+        "3"
+      ],
+      "last_completed_high": 750.18,
+      "last_completed_low": 746.44,
+      "current_price": 744.46,
+      "trigger": "bearish_trigger",
       "patterns": [
         {
           "name": "Failed-2",
           "direction": "bear",
-          "stop_level": 747.97,
+          "stop_level": 749.94,
           "actionable": true,
           "note": "2U failed -- breakout buyers trapped, reversing down"
         }
@@ -84,33 +99,26 @@
     },
     {
       "symbol": "SPY",
-      "timeframe": "30Min",
-      "last_bar_time": "2026-06-22T08:30:00-04:00",
+      "timeframe": "1H",
+      "last_bar_time": "2026-06-22T09:00:00-04:00",
       "last_three_labels": [
-        "1",
-        "3",
+        "2U",
+        "2D",
         "2U"
       ],
-      "last_completed_high": 747.97,
-      "last_completed_low": 747.17,
-      "current_price": 747.19,
-      "trigger": null,
-      "patterns": []
-    },
-    {
-      "symbol": "SPY",
-      "timeframe": "1H",
-      "last_bar_time": "2026-06-22T08:00:00-04:00",
-      "last_three_labels": [
-        "2U",
-        "2U",
-        "2D"
-      ],
-      "last_completed_high": 747.97,
-      "last_completed_low": 744.06,
-      "current_price": 747.19,
-      "trigger": null,
-      "patterns": []
+      "last_completed_high": 749.94,
+      "last_completed_low": 747.19,
+      "current_price": 744.46,
+      "trigger": "bearish_trigger",
+      "patterns": [
+        {
+          "name": "Failed-2",
+          "direction": "bull",
+          "stop_level": 744.06,
+          "actionable": true,
+          "note": "2D failed -- breakdown sellers trapped, reversing up"
+        }
+      ]
     },
     {
       "symbol": "SPY",
@@ -123,8 +131,8 @@
       ],
       "last_completed_high": 748.18,
       "last_completed_low": 746.34,
-      "current_price": 746.94,
-      "trigger": null,
+      "current_price": 744.46,
+      "trigger": "bearish_trigger",
       "patterns": []
     },
     {
@@ -138,93 +146,69 @@
       ],
       "last_completed_high": 748.23,
       "last_completed_low": 743.86,
-      "current_price": 746.74,
+      "current_price": 744.46,
       "trigger": null,
       "patterns": []
     },
     {
       "symbol": "QQQ",
       "timeframe": "5Min",
-      "last_bar_time": "2026-06-22T08:55:00-04:00",
-      "last_three_labels": [
-        "2D",
-        "2U",
-        "2D"
-      ],
-      "last_completed_high": 741.87,
-      "last_completed_low": 741.53,
-      "current_price": 741.6,
-      "trigger": null,
-      "patterns": [
-        {
-          "name": "Failed-2",
-          "direction": "bear",
-          "stop_level": 741.91,
-          "actionable": true,
-          "note": "2U failed -- breakout buyers trapped, reversing down"
-        }
-      ]
-    },
-    {
-      "symbol": "QQQ",
-      "timeframe": "15Min",
-      "last_bar_time": "2026-06-22T08:45:00-04:00",
-      "last_three_labels": [
-        "2U",
-        "2U",
-        "2D"
-      ],
-      "last_completed_high": 741.91,
-      "last_completed_low": 741.38,
-      "current_price": 741.6,
-      "trigger": null,
-      "patterns": [
-        {
-          "name": "Failed-2",
-          "direction": "bear",
-          "stop_level": 742.57,
-          "actionable": true,
-          "note": "2U failed -- breakout buyers trapped, reversing down"
-        }
-      ]
-    },
-    {
-      "symbol": "QQQ",
-      "timeframe": "30Min",
-      "last_bar_time": "2026-06-22T08:30:00-04:00",
+      "last_bar_time": "2026-06-22T10:45:00-04:00",
       "last_three_labels": [
         "1",
-        "2U",
-        "2U"
+        "2D",
+        "1"
       ],
-      "last_completed_high": 742.57,
-      "last_completed_low": 741.38,
-      "current_price": 741.6,
+      "last_completed_high": 738.67,
+      "last_completed_low": 737.04,
+      "current_price": 737.56,
       "trigger": null,
       "patterns": []
     },
     {
       "symbol": "QQQ",
-      "timeframe": "1H",
-      "last_bar_time": "2026-06-22T08:00:00-04:00",
+      "timeframe": "15Min",
+      "last_bar_time": "2026-06-22T10:30:00-04:00",
       "last_three_labels": [
+        "2U",
+        "2D",
+        "2D"
+      ],
+      "last_completed_high": 740.56,
+      "last_completed_low": 737.03,
+      "current_price": 737.56,
+      "trigger": null,
+      "patterns": []
+    },
+    {
+      "symbol": "QQQ",
+      "timeframe": "30Min",
+      "last_bar_time": "2026-06-22T10:00:00-04:00",
+      "last_three_labels": [
+        "2U",
         "3",
+        "3"
+      ],
+      "last_completed_high": 745.45,
+      "last_completed_low": 740.15,
+      "current_price": 737.56,
+      "trigger": "bearish_trigger",
+      "patterns": []
+    },
+    {
+      "symbol": "QQQ",
+      "timeframe": "1H",
+      "last_bar_time": "2026-06-22T09:00:00-04:00",
+      "last_three_labels": [
+        "2U",
         "2U",
         "2U"
       ],
-      "last_completed_high": 742.57,
-      "last_completed_low": 740.065,
-      "current_price": 741.6,
-      "trigger": null,
-      "patterns": [
-        {
-          "name": "3-2-2",
-          "direction": "bull",
-          "stop_level": 739.0,
-          "actionable": true,
-          "note": "Outside bar range resolved directionally, twice"
-        }
-      ]
+      "last_completed_high": 744.695,
+      "last_completed_low": 740.43,
+      "current_price": 737.56,
+      "trigger": "bearish_trigger",
+      "patterns": []
     },
     {
       "symbol": "QQQ",
@@ -237,8 +221,8 @@
       ],
       "last_completed_high": 741.48,
       "last_completed_low": 738.82,
-      "current_price": 739.8285,
-      "trigger": null,
+      "current_price": 737.56,
+      "trigger": "bearish_trigger",
       "patterns": []
     },
     {
@@ -252,7 +236,7 @@
       ],
       "last_completed_high": 741.82,
       "last_completed_low": 732.51,
-      "current_price": 740.62,
+      "current_price": 737.56,
       "trigger": null,
       "patterns": [
         {
@@ -267,68 +251,68 @@
     {
       "symbol": "IWM",
       "timeframe": "5Min",
-      "last_bar_time": "2026-06-22T08:55:00-04:00",
+      "last_bar_time": "2026-06-22T10:45:00-04:00",
       "last_three_labels": [
-        "2D",
+        "2U",
         "2D",
         "1"
       ],
-      "last_completed_high": 296.5,
-      "last_completed_low": 296.44,
-      "current_price": 296.45,
+      "last_completed_high": 297.16,
+      "last_completed_low": 296.67,
+      "current_price": 296.76,
       "trigger": null,
       "patterns": []
     },
     {
       "symbol": "IWM",
       "timeframe": "15Min",
-      "last_bar_time": "2026-06-22T08:45:00-04:00",
+      "last_bar_time": "2026-06-22T10:30:00-04:00",
       "last_three_labels": [
-        "2U",
         "1",
+        "2D",
         "2D"
       ],
-      "last_completed_high": 296.65,
-      "last_completed_low": 296.41,
-      "current_price": 296.45,
+      "last_completed_high": 297.64,
+      "last_completed_low": 296.65,
+      "current_price": 296.76,
       "trigger": null,
       "patterns": [
         {
-          "name": "2-1-2",
+          "name": "1-2-2 Rev Strat",
           "direction": "bear",
-          "stop_level": 296.87,
+          "stop_level": 299.43,
           "actionable": true,
-          "note": "2-1-2 reversal"
+          "note": "Counter-trend reversal off an inside bar"
         }
       ]
     },
     {
       "symbol": "IWM",
       "timeframe": "30Min",
-      "last_bar_time": "2026-06-22T08:30:00-04:00",
+      "last_bar_time": "2026-06-22T10:00:00-04:00",
       "last_three_labels": [
-        "1",
+        "2U",
         "2U",
         "1"
       ],
-      "last_completed_high": 296.87,
-      "last_completed_low": 296.41,
-      "current_price": 296.45,
-      "trigger": null,
+      "last_completed_high": 299.43,
+      "last_completed_low": 297.09,
+      "current_price": 296.76,
+      "trigger": "bearish_trigger",
       "patterns": []
     },
     {
       "symbol": "IWM",
       "timeframe": "1H",
-      "last_bar_time": "2026-06-22T08:00:00-04:00",
+      "last_bar_time": "2026-06-22T09:00:00-04:00",
       "last_three_labels": [
         "2U",
         "2U",
         "2U"
       ],
-      "last_completed_high": 296.87,
-      "last_completed_low": 296.29,
-      "current_price": 296.45,
+      "last_completed_high": 299.49,
+      "last_completed_low": 296.43,
+      "current_price": 296.76,
       "trigger": null,
       "patterns": []
     },
@@ -343,8 +327,8 @@
       ],
       "last_completed_high": 295.86,
       "last_completed_low": 294.92,
-      "current_price": 295.18,
-      "trigger": null,
+      "current_price": 296.76,
+      "trigger": "bullish_trigger",
       "patterns": []
     },
     {
@@ -358,175 +342,77 @@
       ],
       "last_completed_high": 295.97,
       "last_completed_low": 291.42,
-      "current_price": 295.59,
-      "trigger": null,
-      "patterns": []
-    },
-    {
-      "symbol": "DIA",
-      "timeframe": "5Min",
-      "last_bar_time": "2026-06-22T08:55:00-04:00",
-      "last_three_labels": [
-        "2D",
-        "2D",
-        "2D"
-      ],
-      "last_completed_high": 516.34,
-      "last_completed_low": 516.22,
-      "current_price": 516.22,
-      "trigger": null,
-      "patterns": []
-    },
-    {
-      "symbol": "DIA",
-      "timeframe": "15Min",
-      "last_bar_time": "2026-06-22T08:45:00-04:00",
-      "last_three_labels": [
-        "2U",
-        "3",
-        "2D"
-      ],
-      "last_completed_high": 516.46,
-      "last_completed_low": 516.22,
-      "current_price": 516.22,
-      "trigger": null,
-      "patterns": []
-    },
-    {
-      "symbol": "DIA",
-      "timeframe": "30Min",
-      "last_bar_time": "2026-06-22T08:30:00-04:00",
-      "last_three_labels": [
-        "1",
-        "2U",
-        "2U"
-      ],
-      "last_completed_high": 516.99,
-      "last_completed_low": 516.22,
-      "current_price": 516.22,
-      "trigger": null,
-      "patterns": []
-    },
-    {
-      "symbol": "DIA",
-      "timeframe": "1H",
-      "last_bar_time": "2026-06-22T08:00:00-04:00",
-      "last_three_labels": [
-        "1",
-        "2U",
-        "2U"
-      ],
-      "last_completed_high": 516.99,
-      "last_completed_low": 516.18,
-      "current_price": 516.22,
-      "trigger": null,
-      "patterns": []
-    },
-    {
-      "symbol": "DIA",
-      "timeframe": "4H",
-      "last_bar_time": "2026-06-18T17:30:00-04:00",
-      "last_three_labels": [
-        "2D",
-        "2D",
-        "2D"
-      ],
-      "last_completed_high": 516.4,
-      "last_completed_low": 515.42,
-      "current_price": 515.89,
-      "trigger": null,
-      "patterns": []
-    },
-    {
-      "symbol": "DIA",
-      "timeframe": "1D",
-      "last_bar_time": "2026-06-18T00:00:00-04:00",
-      "last_three_labels": [
-        "2U",
-        "3",
-        "1"
-      ],
-      "last_completed_high": 519.52,
-      "last_completed_low": 515.43,
-      "current_price": 515.52,
-      "trigger": null,
+      "current_price": 296.76,
+      "trigger": "bullish_trigger",
       "patterns": []
     },
     {
       "symbol": "AAPL",
       "timeframe": "5Min",
-      "last_bar_time": "2026-06-22T08:55:00-04:00",
+      "last_bar_time": "2026-06-22T10:45:00-04:00",
       "last_three_labels": [
-        "1",
         "2D",
-        "2D"
+        "1",
+        "1"
       ],
-      "last_completed_high": 296.4,
-      "last_completed_low": 296.2,
-      "current_price": 296.3999,
+      "last_completed_high": 300.13,
+      "last_completed_low": 299.64,
+      "current_price": 299.85,
       "trigger": null,
-      "patterns": [
-        {
-          "name": "1-2-2 Rev Strat",
-          "direction": "bear",
-          "stop_level": 296.67,
-          "actionable": true,
-          "note": "Counter-trend reversal off an inside bar"
-        }
-      ]
+      "patterns": []
     },
     {
       "symbol": "AAPL",
       "timeframe": "15Min",
-      "last_bar_time": "2026-06-22T08:45:00-04:00",
+      "last_bar_time": "2026-06-22T10:30:00-04:00",
       "last_three_labels": [
         "2U",
-        "2U",
-        "1"
+        "2D",
+        "2D"
       ],
-      "last_completed_high": 296.67,
-      "last_completed_low": 296.2,
-      "current_price": 296.3999,
+      "last_completed_high": 301.23,
+      "last_completed_low": 299.56,
+      "current_price": 299.85,
       "trigger": null,
       "patterns": []
     },
     {
       "symbol": "AAPL",
       "timeframe": "30Min",
-      "last_bar_time": "2026-06-22T08:30:00-04:00",
+      "last_bar_time": "2026-06-22T10:00:00-04:00",
       "last_three_labels": [
-        "1",
+        "3",
         "2U",
         "2U"
       ],
-      "last_completed_high": 296.7,
-      "last_completed_low": 296.1001,
-      "current_price": 296.3999,
-      "trigger": null,
-      "patterns": []
-    },
-    {
-      "symbol": "AAPL",
-      "timeframe": "1H",
-      "last_bar_time": "2026-06-22T08:00:00-04:00",
-      "last_three_labels": [
-        "3",
-        "1",
-        "2U"
-      ],
-      "last_completed_high": 296.7,
-      "last_completed_low": 295.89,
-      "current_price": 296.3999,
-      "trigger": null,
+      "last_completed_high": 302.42,
+      "last_completed_low": 300.88,
+      "current_price": 299.85,
+      "trigger": "bearish_trigger",
       "patterns": [
         {
-          "name": "3-1-2",
+          "name": "3-2-2",
           "direction": "bull",
-          "stop_level": 294.82,
+          "stop_level": 296.0,
           "actionable": true,
-          "note": "Outside bar, inside bar, directional break"
+          "note": "Outside bar range resolved directionally, twice"
         }
       ]
+    },
+    {
+      "symbol": "AAPL",
+      "timeframe": "1H",
+      "last_bar_time": "2026-06-22T09:00:00-04:00",
+      "last_three_labels": [
+        "1",
+        "2U",
+        "2U"
+      ],
+      "last_completed_high": 302.06,
+      "last_completed_low": 296.0,
+      "current_price": 299.85,
+      "trigger": null,
+      "patterns": []
     },
     {
       "symbol": "AAPL",
@@ -539,8 +425,8 @@
       ],
       "last_completed_high": 298.04,
       "last_completed_low": 297.0,
-      "current_price": 297.23,
-      "trigger": null,
+      "current_price": 299.85,
+      "trigger": "bullish_trigger",
       "patterns": [
         {
           "name": "3-1-2",
@@ -562,75 +448,75 @@
       ],
       "last_completed_high": 300.57,
       "last_completed_low": 295.62,
-      "current_price": 298.01,
+      "current_price": 299.85,
       "trigger": null,
       "patterns": []
     },
     {
       "symbol": "AMD",
       "timeframe": "5Min",
-      "last_bar_time": "2026-06-22T08:55:00-04:00",
-      "last_three_labels": [
-        "3",
-        "1",
-        "2D"
-      ],
-      "last_completed_high": 542.69,
-      "last_completed_low": 542.1001,
-      "current_price": 542.1001,
-      "trigger": null,
-      "patterns": [
-        {
-          "name": "3-1-2",
-          "direction": "bear",
-          "stop_level": 543.4055,
-          "actionable": true,
-          "note": "Outside bar, inside bar, directional break"
-        }
-      ]
-    },
-    {
-      "symbol": "AMD",
-      "timeframe": "15Min",
-      "last_bar_time": "2026-06-22T08:45:00-04:00",
+      "last_bar_time": "2026-06-22T10:45:00-04:00",
       "last_three_labels": [
         "2U",
-        "2U",
-        "2D"
+        "2D",
+        "2U"
       ],
-      "last_completed_high": 543.5,
-      "last_completed_low": 537.37,
-      "current_price": 542.1001,
+      "last_completed_high": 544.96,
+      "last_completed_low": 541.44,
+      "current_price": 544.5,
       "trigger": null,
       "patterns": []
     },
     {
       "symbol": "AMD",
-      "timeframe": "30Min",
-      "last_bar_time": "2026-06-22T08:30:00-04:00",
+      "timeframe": "15Min",
+      "last_bar_time": "2026-06-22T10:30:00-04:00",
       "last_three_labels": [
         "1",
-        "3",
-        "2U"
+        "2D",
+        "2D"
       ],
-      "last_completed_high": 543.82,
-      "last_completed_low": 537.37,
-      "current_price": 542.1001,
+      "last_completed_high": 544.9899,
+      "last_completed_low": 540.57,
+      "current_price": 544.5,
+      "trigger": null,
+      "patterns": [
+        {
+          "name": "1-2-2 Rev Strat",
+          "direction": "bear",
+          "stop_level": 558.68,
+          "actionable": true,
+          "note": "Counter-trend reversal off an inside bar"
+        }
+      ]
+    },
+    {
+      "symbol": "AMD",
+      "timeframe": "30Min",
+      "last_bar_time": "2026-06-22T10:00:00-04:00",
+      "last_three_labels": [
+        "2U",
+        "3",
+        "1"
+      ],
+      "last_completed_high": 558.68,
+      "last_completed_low": 543.0,
+      "current_price": 544.5,
       "trigger": null,
       "patterns": []
     },
     {
       "symbol": "AMD",
       "timeframe": "1H",
-      "last_bar_time": "2026-06-22T08:00:00-04:00",
+      "last_bar_time": "2026-06-22T09:00:00-04:00",
       "last_three_labels": [
-        "3",
         "2U",
+        "3",
         "3"
       ],
-      "last_completed_high": 543.82,
-      "last_completed_low": 536.027,
-      "current_price": 542.1001,
+      "last_completed_high": 562.9899,
+      "last_completed_low": 535.7101,
+      "current_price": 544.5,
       "trigger": null,
       "patterns": []
     },
@@ -645,8 +531,8 @@
       ],
       "last_completed_high": 539.5,
       "last_completed_low": 535.75,
-      "current_price": 536.99,
-      "trigger": null,
+      "current_price": 544.5,
+      "trigger": "bullish_trigger",
       "patterns": []
     },
     {
@@ -660,8 +546,8 @@
       ],
       "last_completed_high": 539.69,
       "last_completed_low": 526.315,
-      "current_price": 537.37,
-      "trigger": null,
+      "current_price": 544.5,
+      "trigger": "bullish_trigger",
       "patterns": [
         {
           "name": "2-1-2",
@@ -675,76 +561,76 @@
     {
       "symbol": "AMZN",
       "timeframe": "5Min",
-      "last_bar_time": "2026-06-22T08:55:00-04:00",
+      "last_bar_time": "2026-06-22T10:45:00-04:00",
       "last_three_labels": [
         "2U",
-        "2D",
+        "2U",
         "2D"
       ],
-      "last_completed_high": 242.8,
-      "last_completed_low": 242.7672,
-      "current_price": 242.7672,
-      "trigger": null,
-      "patterns": []
-    },
-    {
-      "symbol": "AMZN",
-      "timeframe": "15Min",
-      "last_bar_time": "2026-06-22T08:45:00-04:00",
-      "last_three_labels": [
-        "1",
-        "2D",
-        "2D"
-      ],
-      "last_completed_high": 243.06,
-      "last_completed_low": 242.7672,
-      "current_price": 242.7672,
+      "last_completed_high": 235.6699,
+      "last_completed_low": 234.81,
+      "current_price": 234.8979,
       "trigger": null,
       "patterns": [
         {
-          "name": "1-2-2 Rev Strat",
+          "name": "Failed-2",
           "direction": "bear",
-          "stop_level": 243.2,
+          "stop_level": 236.4,
           "actionable": true,
-          "note": "Counter-trend reversal off an inside bar"
+          "note": "2U failed -- breakout buyers trapped, reversing down"
         }
       ]
     },
     {
       "symbol": "AMZN",
-      "timeframe": "30Min",
-      "last_bar_time": "2026-06-22T08:30:00-04:00",
+      "timeframe": "15Min",
+      "last_bar_time": "2026-06-22T10:30:00-04:00",
       "last_three_labels": [
-        "1",
-        "2U",
-        "1"
+        "2D",
+        "2D",
+        "2D"
       ],
-      "last_completed_high": 243.06,
-      "last_completed_low": 242.7672,
-      "current_price": 242.7672,
-      "trigger": null,
+      "last_completed_high": 236.4,
+      "last_completed_low": 234.9,
+      "current_price": 234.8979,
+      "trigger": "bearish_trigger",
+      "patterns": []
+    },
+    {
+      "symbol": "AMZN",
+      "timeframe": "30Min",
+      "last_bar_time": "2026-06-22T10:00:00-04:00",
+      "last_three_labels": [
+        "2D",
+        "2D",
+        "2D"
+      ],
+      "last_completed_high": 239.39,
+      "last_completed_low": 235.5,
+      "current_price": 234.8979,
+      "trigger": "bearish_trigger",
       "patterns": []
     },
     {
       "symbol": "AMZN",
       "timeframe": "1H",
-      "last_bar_time": "2026-06-22T08:00:00-04:00",
+      "last_bar_time": "2026-06-22T09:00:00-04:00",
       "last_three_labels": [
-        "3",
         "2U",
-        "2U"
+        "2U",
+        "2D"
       ],
-      "last_completed_high": 243.78,
-      "last_completed_low": 242.72,
-      "current_price": 242.7672,
-      "trigger": null,
+      "last_completed_high": 243.0,
+      "last_completed_low": 238.6501,
+      "current_price": 234.8979,
+      "trigger": "bearish_trigger",
       "patterns": [
         {
-          "name": "3-2-2",
-          "direction": "bull",
-          "stop_level": 242.0,
+          "name": "Failed-2",
+          "direction": "bear",
+          "stop_level": 243.78,
           "actionable": true,
-          "note": "Outside bar range resolved directionally, twice"
+          "note": "2U failed -- breakout buyers trapped, reversing down"
         }
       ]
     },
@@ -759,8 +645,8 @@
       ],
       "last_completed_high": 243.84,
       "last_completed_low": 242.28,
-      "current_price": 243.15,
-      "trigger": null,
+      "current_price": 234.8979,
+      "trigger": "bearish_trigger",
       "patterns": [
         {
           "name": "2-1-2",
@@ -782,76 +668,76 @@
       ],
       "last_completed_high": 245.73,
       "last_completed_low": 236.02,
-      "current_price": 244.39,
-      "trigger": null,
+      "current_price": 234.8979,
+      "trigger": "bearish_trigger",
       "patterns": []
     },
     {
       "symbol": "GOOG",
       "timeframe": "5Min",
-      "last_bar_time": "2026-06-22T08:55:00-04:00",
+      "last_bar_time": "2026-06-22T10:45:00-04:00",
       "last_three_labels": [
         "2U",
-        "1",
-        "2U"
+        "3",
+        "2D"
       ],
-      "last_completed_high": 359.3884,
-      "last_completed_low": 359.22,
-      "current_price": 359.26,
-      "trigger": null,
+      "last_completed_high": 347.1,
+      "last_completed_low": 345.88,
+      "current_price": 345.43,
+      "trigger": "bearish_trigger",
+      "patterns": []
+    },
+    {
+      "symbol": "GOOG",
+      "timeframe": "15Min",
+      "last_bar_time": "2026-06-22T10:30:00-04:00",
+      "last_three_labels": [
+        "2D",
+        "2D",
+        "2D"
+      ],
+      "last_completed_high": 348.51,
+      "last_completed_low": 346.7002,
+      "current_price": 345.43,
+      "trigger": "bearish_trigger",
       "patterns": [
         {
-          "name": "2-1-2",
-          "direction": "bull",
-          "stop_level": 359.2,
-          "actionable": true,
-          "note": "2-1-2 continuation"
+          "name": "PMG",
+          "direction": "bear",
+          "stop_level": null,
+          "actionable": false,
+          "note": "6 consecutive 2D bars -- stretched, watch for a snapback"
         }
       ]
     },
     {
       "symbol": "GOOG",
-      "timeframe": "15Min",
-      "last_bar_time": "2026-06-22T08:45:00-04:00",
-      "last_three_labels": [
-        "2D",
-        "2D",
-        "1"
-      ],
-      "last_completed_high": 359.3884,
-      "last_completed_low": 358.95,
-      "current_price": 359.26,
-      "trigger": null,
-      "patterns": []
-    },
-    {
-      "symbol": "GOOG",
       "timeframe": "30Min",
-      "last_bar_time": "2026-06-22T08:30:00-04:00",
+      "last_bar_time": "2026-06-22T10:00:00-04:00",
       "last_three_labels": [
-        "1",
+        "2D",
         "2D",
         "2D"
       ],
-      "last_completed_high": 359.91,
-      "last_completed_low": 358.85,
-      "current_price": 359.26,
-      "trigger": null,
+      "last_completed_high": 353.71,
+      "last_completed_low": 347.86,
+      "current_price": 345.43,
+      "trigger": "bearish_trigger",
       "patterns": []
     },
     {
       "symbol": "GOOG",
       "timeframe": "1H",
-      "last_bar_time": "2026-06-22T08:00:00-04:00",
+      "last_bar_time": "2026-06-22T09:00:00-04:00",
       "last_three_labels": [
         "2D",
         "2D",
         "2D"
       ],
-      "last_completed_high": 361.25,
-      "last_completed_low": 358.85,
-      "current_price": 359.26,
-      "trigger": null,
+      "last_completed_high": 359.58,
+      "last_completed_low": 352.6,
+      "current_price": 345.43,
+      "trigger": "bearish_trigger",
       "patterns": []
     },
     {
@@ -865,8 +751,8 @@
       ],
       "last_completed_high": 366.63,
       "last_completed_low": 364.01,
-      "current_price": 365.04,
-      "trigger": null,
+      "current_price": 345.43,
+      "trigger": "bearish_trigger",
       "patterns": []
     },
     {
@@ -880,68 +766,76 @@
       ],
       "last_completed_high": 369.0,
       "last_completed_low": 356.6082,
-      "current_price": 367.46,
-      "trigger": null,
+      "current_price": 345.43,
+      "trigger": "bearish_trigger",
       "patterns": []
     },
     {
       "symbol": "GOOGL",
       "timeframe": "5Min",
-      "last_bar_time": "2026-06-22T08:55:00-04:00",
+      "last_bar_time": "2026-06-22T10:45:00-04:00",
       "last_three_labels": [
         "2U",
-        "1",
-        "3"
+        "3",
+        "2D"
       ],
-      "last_completed_high": 360.0,
-      "last_completed_low": 359.82,
-      "current_price": 359.95,
-      "trigger": null,
+      "last_completed_high": 347.79,
+      "last_completed_low": 346.4,
+      "current_price": 345.895,
+      "trigger": "bearish_trigger",
       "patterns": []
     },
     {
       "symbol": "GOOGL",
       "timeframe": "15Min",
-      "last_bar_time": "2026-06-22T08:45:00-04:00",
+      "last_bar_time": "2026-06-22T10:30:00-04:00",
       "last_three_labels": [
         "2D",
         "2D",
-        "1"
+        "2D"
       ],
-      "last_completed_high": 360.0,
-      "last_completed_low": 359.47,
-      "current_price": 359.95,
-      "trigger": null,
-      "patterns": []
+      "last_completed_high": 349.3399,
+      "last_completed_low": 347.3,
+      "current_price": 345.895,
+      "trigger": "bearish_trigger",
+      "patterns": [
+        {
+          "name": "PMG",
+          "direction": "bear",
+          "stop_level": null,
+          "actionable": false,
+          "note": "6 consecutive 2D bars -- stretched, watch for a snapback"
+        }
+      ]
     },
     {
       "symbol": "GOOGL",
       "timeframe": "30Min",
-      "last_bar_time": "2026-06-22T08:30:00-04:00",
+      "last_bar_time": "2026-06-22T10:00:00-04:00",
       "last_three_labels": [
-        "1",
+        "2D",
         "2D",
         "2D"
       ],
-      "last_completed_high": 360.25,
-      "last_completed_low": 359.29,
-      "current_price": 359.95,
-      "trigger": null,
+      "last_completed_high": 354.29,
+      "last_completed_low": 348.55,
+      "current_price": 345.895,
+      "trigger": "bearish_trigger",
       "patterns": []
     },
     {
       "symbol": "GOOGL",
       "timeframe": "1H",
-      "last_bar_time": "2026-06-22T08:00:00-04:00",
+      "last_bar_time": "2026-06-22T09:00:00-04:00",
       "last_three_labels": [
         "2D",
         "2D",
         "2D"
       ],
-      "last_completed_high": 361.8,
-      "last_completed_low": 359.29,
-      "current_price": 359.95,
-      "trigger": null,
+      "last_completed_high": 360.05,
+      "last_completed_low": 353.2,
+      "current_price": 345.895,
+      "trigger": "bearish_trigger",
       "patterns": []
     },
     {
@@ -955,8 +849,8 @@
       ],
       "last_completed_high": 367.425,
       "last_completed_low": 365.0,
-      "current_price": 366.4,
-      "trigger": null,
+      "current_price": 345.895,
+      "trigger": "bearish_trigger",
       "patterns": []
     },
     {
@@ -970,68 +864,76 @@
       ],
       "last_completed_high": 369.48,
       "last_completed_low": 358.67,
-      "current_price": 368.03,
-      "trigger": null,
+      "current_price": 345.895,
+      "trigger": "bearish_trigger",
       "patterns": []
     },
     {
       "symbol": "META",
       "timeframe": "5Min",
-      "last_bar_time": "2026-06-22T08:55:00-04:00",
+      "last_bar_time": "2026-06-22T10:45:00-04:00",
       "last_three_labels": [
-        "1",
-        "2D",
-        "1"
+        "2U",
+        "2U",
+        "2D"
       ],
-      "last_completed_high": 573.8934,
-      "last_completed_low": 573.6255,
-      "current_price": 573.6255,
-      "trigger": null,
-      "patterns": []
+      "last_completed_high": 567.705,
+      "last_completed_low": 565.42,
+      "current_price": 564.585,
+      "trigger": "bearish_trigger",
+      "patterns": [
+        {
+          "name": "Failed-2",
+          "direction": "bear",
+          "stop_level": 568.63,
+          "actionable": true,
+          "note": "2U failed -- breakout buyers trapped, reversing down"
+        }
+      ]
     },
     {
       "symbol": "META",
       "timeframe": "15Min",
-      "last_bar_time": "2026-06-22T08:45:00-04:00",
+      "last_bar_time": "2026-06-22T10:30:00-04:00",
       "last_three_labels": [
-        "1",
-        "1",
-        "1"
+        "2D",
+        "2D",
+        "2D"
       ],
-      "last_completed_high": 574.3,
-      "last_completed_low": 573.55,
-      "current_price": 573.6255,
-      "trigger": null,
+      "last_completed_high": 568.63,
+      "last_completed_low": 566.0,
+      "current_price": 564.585,
+      "trigger": "bearish_trigger",
       "patterns": []
     },
     {
       "symbol": "META",
       "timeframe": "30Min",
-      "last_bar_time": "2026-06-22T08:30:00-04:00",
+      "last_bar_time": "2026-06-22T10:00:00-04:00",
       "last_three_labels": [
-        "1",
-        "2U",
-        "1"
+        "2D",
+        "3",
+        "2D"
       ],
-      "last_completed_high": 574.9,
-      "last_completed_low": 573.5,
-      "current_price": 573.6255,
-      "trigger": null,
+      "last_completed_high": 575.48,
+      "last_completed_low": 567.0,
+      "current_price": 564.585,
+      "trigger": "bearish_trigger",
       "patterns": []
     },
     {
       "symbol": "META",
       "timeframe": "1H",
-      "last_bar_time": "2026-06-22T08:00:00-04:00",
+      "last_bar_time": "2026-06-22T09:00:00-04:00",
       "last_three_labels": [
-        "3",
         "2D",
-        "2U"
+        "2U",
+        "3"
       ],
-      "last_completed_high": 575.777,
-      "last_completed_low": 573.3,
-      "current_price": 573.6255,
-      "trigger": null,
+      "last_completed_high": 575.81,
+      "last_completed_low": 567.2501,
+      "current_price": 564.585,
+      "trigger": "bearish_trigger",
       "patterns": []
     },
     {
@@ -1045,8 +947,8 @@
       ],
       "last_completed_high": 577.4,
       "last_completed_low": 573.37,
-      "current_price": 574.8864,
-      "trigger": null,
+      "current_price": 564.585,
+      "trigger": "bearish_trigger",
       "patterns": []
     },
     {
@@ -1060,58 +962,28 @@
       ],
       "last_completed_high": 580.215,
       "last_completed_low": 563.1,
-      "current_price": 577.22,
+      "current_price": 564.585,
       "trigger": null,
       "patterns": []
     },
     {
       "symbol": "MSFT",
       "timeframe": "5Min",
-      "last_bar_time": "2026-06-22T08:55:00-04:00",
-      "last_three_labels": [
-        "1",
-        "3",
-        "2U"
-      ],
-      "last_completed_high": 377.68,
-      "last_completed_low": 377.3846,
-      "current_price": 377.5,
-      "trigger": null,
-      "patterns": []
-    },
-    {
-      "symbol": "MSFT",
-      "timeframe": "15Min",
-      "last_bar_time": "2026-06-22T08:45:00-04:00",
+      "last_bar_time": "2026-06-22T10:45:00-04:00",
       "last_three_labels": [
         "2U",
-        "2D",
-        "1"
-      ],
-      "last_completed_high": 377.68,
-      "last_completed_low": 377.23,
-      "current_price": 377.5,
-      "trigger": null,
-      "patterns": []
-    },
-    {
-      "symbol": "MSFT",
-      "timeframe": "30Min",
-      "last_bar_time": "2026-06-22T08:30:00-04:00",
-      "last_three_labels": [
-        "2D",
         "2U",
         "2D"
       ],
-      "last_completed_high": 378.04,
-      "last_completed_low": 377.2,
-      "current_price": 377.5,
-      "trigger": null,
+      "last_completed_high": 374.25,
+      "last_completed_low": 373.15,
+      "current_price": 372.4146,
+      "trigger": "bearish_trigger",
       "patterns": [
         {
           "name": "Failed-2",
           "direction": "bear",
-          "stop_level": 378.43,
+          "stop_level": 374.4554,
           "actionable": true,
           "note": "2U failed -- breakout buyers trapped, reversing down"
         }
@@ -1119,18 +991,56 @@
     },
     {
       "symbol": "MSFT",
-      "timeframe": "1H",
-      "last_bar_time": "2026-06-22T08:00:00-04:00",
+      "timeframe": "15Min",
+      "last_bar_time": "2026-06-22T10:30:00-04:00",
       "last_three_labels": [
         "2D",
         "2D",
         "2D"
       ],
-      "last_completed_high": 378.43,
-      "last_completed_low": 377.2,
-      "current_price": 377.5,
-      "trigger": null,
+      "last_completed_high": 374.4554,
+      "last_completed_low": 372.92,
+      "current_price": 372.4146,
+      "trigger": "bearish_trigger",
       "patterns": []
+    },
+    {
+      "symbol": "MSFT",
+      "timeframe": "30Min",
+      "last_bar_time": "2026-06-22T10:00:00-04:00",
+      "last_three_labels": [
+        "2D",
+        "3",
+        "2D"
+      ],
+      "last_completed_high": 380.89,
+      "last_completed_low": 373.53,
+      "current_price": 372.4146,
+      "trigger": "bearish_trigger",
+      "patterns": []
+    },
+    {
+      "symbol": "MSFT",
+      "timeframe": "1H",
+      "last_bar_time": "2026-06-22T09:00:00-04:00",
+      "last_three_labels": [
+        "2D",
+        "2D",
+        "3"
+      ],
+      "last_completed_high": 381.63,
+      "last_completed_low": 374.36,
+      "current_price": 372.4146,
+      "trigger": "bearish_trigger",
+      "patterns": [
+        {
+          "name": "Failed-2",
+          "direction": "bull",
+          "stop_level": 377.2,
+          "actionable": true,
+          "note": "2D failed -- breakdown sellers trapped, reversing up"
+        }
+      ]
     },
     {
       "symbol": "MSFT",
@@ -1143,8 +1053,8 @@
       ],
       "last_completed_high": 379.6753,
       "last_completed_low": 378.4855,
-      "current_price": 379.1,
-      "trigger": null,
+      "current_price": 372.4146,
+      "trigger": "bearish_trigger",
       "patterns": []
     },
     {
@@ -1158,76 +1068,68 @@
       ],
       "last_completed_high": 381.37,
       "last_completed_low": 373.28,
-      "current_price": 379.4,
-      "trigger": null,
+      "current_price": 372.4146,
+      "trigger": "bearish_trigger",
       "patterns": []
     },
     {
       "symbol": "NVDA",
       "timeframe": "5Min",
-      "last_bar_time": "2026-06-22T08:55:00-04:00",
+      "last_bar_time": "2026-06-22T10:45:00-04:00",
       "last_three_labels": [
-        "1",
-        "2U",
+        "2D",
+        "2D",
         "1"
       ],
-      "last_completed_high": 210.77,
-      "last_completed_low": 210.5,
-      "current_price": 210.738,
+      "last_completed_high": 209.8791,
+      "last_completed_low": 209.27,
+      "current_price": 209.475,
       "trigger": null,
       "patterns": []
     },
     {
       "symbol": "NVDA",
       "timeframe": "15Min",
-      "last_bar_time": "2026-06-22T08:45:00-04:00",
+      "last_bar_time": "2026-06-22T10:30:00-04:00",
       "last_three_labels": [
-        "3",
         "2U",
-        "1"
+        "2D",
+        "2D"
       ],
-      "last_completed_high": 210.78,
-      "last_completed_low": 210.3,
-      "current_price": 210.738,
+      "last_completed_high": 211.15,
+      "last_completed_low": 209.2105,
+      "current_price": 209.475,
       "trigger": null,
       "patterns": []
     },
     {
       "symbol": "NVDA",
       "timeframe": "30Min",
-      "last_bar_time": "2026-06-22T08:30:00-04:00",
+      "last_bar_time": "2026-06-22T10:00:00-04:00",
       "last_three_labels": [
-        "1",
-        "2D",
-        "2U"
+        "2U",
+        "2U",
+        "1"
       ],
-      "last_completed_high": 211.0,
-      "last_completed_low": 210.2182,
-      "current_price": 210.738,
-      "trigger": null,
-      "patterns": [
-        {
-          "name": "Failed-2",
-          "direction": "bull",
-          "stop_level": 209.87,
-          "actionable": true,
-          "note": "2D failed -- breakdown sellers trapped, reversing up"
-        }
-      ]
+      "last_completed_high": 213.99,
+      "last_completed_low": 211.11,
+      "current_price": 209.475,
+      "trigger": "bearish_trigger",
+      "patterns": []
     },
     {
       "symbol": "NVDA",
       "timeframe": "1H",
-      "last_bar_time": "2026-06-22T08:00:00-04:00",
+      "last_bar_time": "2026-06-22T09:00:00-04:00",
       "last_three_labels": [
         "2U",
         "2U",
         "2U"
       ],
-      "last_completed_high": 211.0,
-      "last_completed_low": 209.87,
-      "current_price": 210.738,
-      "trigger": null,
+      "last_completed_high": 213.99,
+      "last_completed_low": 210.62,
+      "current_price": 209.475,
+      "trigger": "bearish_trigger",
       "patterns": []
     },
     {
@@ -1241,8 +1143,8 @@
       ],
       "last_completed_high": 210.6,
       "last_completed_low": 209.9,
-      "current_price": 210.33,
-      "trigger": null,
+      "current_price": 209.475,
+      "trigger": "bearish_trigger",
       "patterns": []
     },
     {
@@ -1256,7 +1158,7 @@
       ],
       "last_completed_high": 211.39,
       "last_completed_low": 206.5,
-      "current_price": 210.69,
+      "current_price": 209.475,
       "trigger": null,
       "patterns": [
         {
@@ -1271,69 +1173,61 @@
     {
       "symbol": "PLTR",
       "timeframe": "5Min",
-      "last_bar_time": "2026-06-22T08:55:00-04:00",
+      "last_bar_time": "2026-06-22T10:45:00-04:00",
       "last_three_labels": [
-        "2U",
+        "2D",
         "2D",
         "2D"
       ],
-      "last_completed_high": 127.01,
-      "last_completed_low": 126.8,
-      "current_price": 126.91,
-      "trigger": null,
+      "last_completed_high": 123.87,
+      "last_completed_low": 123.26,
+      "current_price": 123.03,
+      "trigger": "bearish_trigger",
       "patterns": []
     },
     {
       "symbol": "PLTR",
       "timeframe": "15Min",
-      "last_bar_time": "2026-06-22T08:45:00-04:00",
+      "last_bar_time": "2026-06-22T10:30:00-04:00",
       "last_three_labels": [
-        "3",
-        "2U",
-        "2U"
+        "2D",
+        "2D",
+        "2D"
       ],
-      "last_completed_high": 127.0814,
-      "last_completed_low": 126.8,
-      "current_price": 126.91,
-      "trigger": null,
-      "patterns": [
-        {
-          "name": "3-2-2",
-          "direction": "bull",
-          "stop_level": 126.61,
-          "actionable": true,
-          "note": "Outside bar range resolved directionally, twice"
-        }
-      ]
+      "last_completed_high": 124.74,
+      "last_completed_low": 123.56,
+      "current_price": 123.03,
+      "trigger": "bearish_trigger",
+      "patterns": []
     },
     {
       "symbol": "PLTR",
       "timeframe": "30Min",
-      "last_bar_time": "2026-06-22T08:30:00-04:00",
+      "last_bar_time": "2026-06-22T10:00:00-04:00",
       "last_three_labels": [
-        "1",
-        "2U",
-        "2U"
+        "2D",
+        "3",
+        "2D"
       ],
-      "last_completed_high": 127.0814,
-      "last_completed_low": 126.8,
-      "current_price": 126.91,
-      "trigger": null,
+      "last_completed_high": 128.4,
+      "last_completed_low": 124.02,
+      "current_price": 123.03,
+      "trigger": "bearish_trigger",
       "patterns": []
     },
     {
       "symbol": "PLTR",
       "timeframe": "1H",
-      "last_bar_time": "2026-06-22T08:00:00-04:00",
+      "last_bar_time": "2026-06-22T09:00:00-04:00",
       "last_three_labels": [
         "2D",
-        "2D",
-        "1"
+        "1",
+        "3"
       ],
-      "last_completed_high": 127.0814,
-      "last_completed_low": 126.61,
-      "current_price": 126.91,
-      "trigger": null,
+      "last_completed_high": 128.87,
+      "last_completed_low": 125.06,
+      "current_price": 123.03,
+      "trigger": "bearish_trigger",
       "patterns": []
     },
     {
@@ -1347,8 +1241,8 @@
       ],
       "last_completed_high": 128.77,
       "last_completed_low": 128.4,
-      "current_price": 128.645,
-      "trigger": null,
+      "current_price": 123.03,
+      "trigger": "bearish_trigger",
       "patterns": []
     },
     {
@@ -1362,8 +1256,8 @@
       ],
       "last_completed_high": 131.43,
       "last_completed_low": 125.01,
-      "current_price": 128.47,
-      "trigger": null,
+      "current_price": 123.03,
+      "trigger": "bearish_trigger",
       "patterns": [
         {
           "name": "Failed-2",
@@ -1377,36 +1271,36 @@
     {
       "symbol": "TSLA",
       "timeframe": "5Min",
-      "last_bar_time": "2026-06-22T08:55:00-04:00",
+      "last_bar_time": "2026-06-22T10:45:00-04:00",
       "last_three_labels": [
         "1",
-        "2U",
+        "3",
         "2D"
       ],
-      "last_completed_high": 396.37,
-      "last_completed_low": 396.1,
-      "current_price": 396.2,
-      "trigger": null,
+      "last_completed_high": 408.3,
+      "last_completed_low": 405.21,
+      "current_price": 403.835,
+      "trigger": "bearish_trigger",
       "patterns": []
     },
     {
       "symbol": "TSLA",
       "timeframe": "15Min",
-      "last_bar_time": "2026-06-22T08:45:00-04:00",
+      "last_bar_time": "2026-06-22T10:30:00-04:00",
       "last_three_labels": [
-        "2D",
+        "2U",
         "1",
-        "2U"
+        "2D"
       ],
-      "last_completed_high": 400.49,
-      "last_completed_low": 396.0,
-      "current_price": 396.2,
-      "trigger": null,
+      "last_completed_high": 410.76,
+      "last_completed_low": 407.05,
+      "current_price": 403.835,
+      "trigger": "bearish_trigger",
       "patterns": [
         {
           "name": "2-1-2",
-          "direction": "bull",
-          "stop_level": 396.0,
+          "direction": "bear",
+          "stop_level": 413.53,
           "actionable": true,
           "note": "2-1-2 reversal"
         }
@@ -1415,30 +1309,30 @@
     {
       "symbol": "TSLA",
       "timeframe": "30Min",
-      "last_bar_time": "2026-06-22T08:30:00-04:00",
-      "last_three_labels": [
-        "2U",
-        "2U",
-        "2U"
-      ],
-      "last_completed_high": 400.49,
-      "last_completed_low": 396.0,
-      "current_price": 396.2,
-      "trigger": null,
-      "patterns": []
-    },
-    {
-      "symbol": "TSLA",
-      "timeframe": "1H",
-      "last_bar_time": "2026-06-22T08:00:00-04:00",
+      "last_bar_time": "2026-06-22T10:00:00-04:00",
       "last_three_labels": [
         "2D",
         "2U",
         "2U"
       ],
-      "last_completed_high": 400.49,
-      "last_completed_low": 396.0,
-      "current_price": 396.2,
+      "last_completed_high": 414.75,
+      "last_completed_low": 406.1503,
+      "current_price": 403.835,
+      "trigger": "bearish_trigger",
+      "patterns": []
+    },
+    {
+      "symbol": "TSLA",
+      "timeframe": "1H",
+      "last_bar_time": "2026-06-22T09:00:00-04:00",
+      "last_three_labels": [
+        "2U",
+        "2U",
+        "3"
+      ],
+      "last_completed_high": 406.77,
+      "last_completed_low": 392.5,
+      "current_price": 403.835,
       "trigger": null,
       "patterns": []
     },
@@ -1453,8 +1347,8 @@
       ],
       "last_completed_high": 399.79,
       "last_completed_low": 397.58,
-      "current_price": 398.5,
-      "trigger": null,
+      "current_price": 403.835,
+      "trigger": "bullish_trigger",
       "patterns": []
     },
     {
@@ -1468,9 +1362,107 @@
       ],
       "last_completed_high": 402.52,
       "last_completed_low": 384.7,
-      "current_price": 400.49,
+      "current_price": 403.835,
+      "trigger": "bullish_trigger",
+      "patterns": []
+    },
+    {
+      "symbol": "INTC",
+      "timeframe": "5Min",
+      "last_bar_time": "2026-06-22T10:45:00-04:00",
+      "last_three_labels": [
+        "2U",
+        "2D",
+        "1"
+      ],
+      "last_completed_high": 138.96,
+      "last_completed_low": 137.855,
+      "current_price": 139.165,
+      "trigger": "bullish_trigger",
+      "patterns": []
+    },
+    {
+      "symbol": "INTC",
+      "timeframe": "15Min",
+      "last_bar_time": "2026-06-22T10:30:00-04:00",
+      "last_three_labels": [
+        "2U",
+        "2U",
+        "3"
+      ],
+      "last_completed_high": 140.13,
+      "last_completed_low": 137.61,
+      "current_price": 139.165,
       "trigger": null,
       "patterns": []
+    },
+    {
+      "symbol": "INTC",
+      "timeframe": "30Min",
+      "last_bar_time": "2026-06-22T10:00:00-04:00",
+      "last_three_labels": [
+        "2U",
+        "3",
+        "1"
+      ],
+      "last_completed_high": 139.77,
+      "last_completed_low": 137.36,
+      "current_price": 139.165,
+      "trigger": null,
+      "patterns": []
+    },
+    {
+      "symbol": "INTC",
+      "timeframe": "1H",
+      "last_bar_time": "2026-06-22T09:00:00-04:00",
+      "last_three_labels": [
+        "2D",
+        "2D",
+        "2U"
+      ],
+      "last_completed_high": 141.45,
+      "last_completed_low": 136.21,
+      "current_price": 139.165,
+      "trigger": null,
+      "patterns": []
+    },
+    {
+      "symbol": "INTC",
+      "timeframe": "4H",
+      "last_bar_time": "2026-06-18T17:30:00-04:00",
+      "last_three_labels": [
+        "2U",
+        "2U",
+        "1"
+      ],
+      "last_completed_high": 134.39,
+      "last_completed_low": 133.51,
+      "current_price": 139.165,
+      "trigger": "bullish_trigger",
+      "patterns": []
+    },
+    {
+      "symbol": "INTC",
+      "timeframe": "1D",
+      "last_bar_time": "2026-06-18T00:00:00-04:00",
+      "last_three_labels": [
+        "2D",
+        "1",
+        "2U"
+      ],
+      "last_completed_high": 135.48,
+      "last_completed_low": 127.9,
+      "current_price": 139.165,
+      "trigger": "bullish_trigger",
+      "patterns": [
+        {
+          "name": "2-1-2",
+          "direction": "bull",
+          "stop_level": 118.06,
+          "actionable": true,
+          "note": "2-1-2 reversal"
+        }
+      ]
     }
   ]
 }
