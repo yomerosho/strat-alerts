@@ -1,7 +1,7 @@
 """
 dashboard/app.py
 -----------------
-Password-protected Streamlit dashboard for the Strat Scanner, built around
+Streamlit dashboard for the Strat Scanner, built around
 a 0DTE workflow: FTFC computed across the higher timeframes (15Min/30Min/
 1H/4H/1D by default), entries confirmed on the fast timeframes (5Min/15Min).
 
@@ -12,8 +12,7 @@ file straight from GitHub's raw content URL on every page load/refresh, so
 it's always showing the latest committed scan -- no redeploy-lag dependency.
 
 Required secrets (Streamlit Cloud: App settings -> Secrets):
-    APP_PASSWORD   = "whatever-you-want"
-    GITHUB_OWNER   = "your-github-username"
+        GITHUB_OWNER   = "your-github-username"
     GITHUB_REPO    = "strat-scanner"
     GITHUB_BRANCH  = "main"
 """
@@ -112,30 +111,7 @@ STRAT_BADGE_STYLE = {
 DIR_COLOR = {"bull": "#22c55e", "bear": "#ef4444", "neutral": "#475569"}
 
 
-# --------------------------------------------------------------------------
-# Password gate
-# --------------------------------------------------------------------------
-def check_password() -> bool:
-    if st.session_state.get("authenticated"):
-        return True
 
-    st.title("📊 Strat Scanner")
-    pwd = st.text_input("Password", type="password")
-    if st.button("Unlock") or pwd:
-        expected = st.secrets.get("APP_PASSWORD")
-        if not expected:
-            st.error("APP_PASSWORD is not configured in this app's Secrets yet.")
-            return False
-        if pwd == expected:
-            st.session_state["authenticated"] = True
-            st.rerun()
-        elif pwd:
-            st.error("Incorrect password.")
-    return False
-
-
-if not check_password():
-    st.stop()
 
 
 # --------------------------------------------------------------------------
