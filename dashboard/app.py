@@ -83,17 +83,31 @@ section[data-testid="stSidebar"] * { color:var(--text) !important; }
 .thesis { margin:.7rem 0 0; font-size:1rem !important; color:var(--dim) !important; }
 .thesis b { font-family:'IBM Plex Mono',monospace; font-weight:700; color:var(--text) !important; }
 
-/* the rail */
-.rail { position:relative; height:30px; margin:1.1rem 0 .5rem; }
-.rail .track{position:absolute;top:14px;left:0;right:0;height:3px;
-             background:var(--surface-2);border-radius:3px;}
-.rail .fill {position:absolute;top:14px;height:3px;border-radius:3px;}
-.rail .tick {position:absolute;top:5px;left:50%;width:3px;height:21px;
-             background:var(--dim);border-radius:2px;}
-.rail .dot  {position:absolute;top:8px;width:15px;height:15px;border-radius:50%;
-             border:3px solid var(--bg);transform:translateX(-50%);}
-.rail .lbl  {position:absolute;top:-4px;font-family:'IBM Plex Mono',monospace;
-             font-size:.72rem !important;color:var(--dim) !important;font-weight:500;}
+/* ---- trade geometry bar ----
+   Laid out in real price order: STOP | trigger | TARGET, with segment widths
+   drawn to actual price distance. The ratio of the red block to the green
+   block IS the reward:risk. You see it instead of reading it. The dot is
+   where price actually is right now on that same axis. */
+.geo { position:relative; height:46px; margin:1.15rem 0 .3rem; }
+.geo .bar   { position:absolute; top:16px; left:0; right:0; height:14px;
+              border-radius:4px; overflow:hidden; display:flex; }
+.geo .risk  { background:rgba(255,107,98,.42); height:100%; }
+.geo .rew   { background:rgba(63,224,138,.38); height:100%; }
+.geo .trig  { position:absolute; top:9px; width:3px; height:28px;
+              background:var(--text); border-radius:2px; transform:translateX(-1px); z-index:3; }
+.geo .dot   { position:absolute; top:15px; width:16px; height:16px; border-radius:50%;
+              border:3px solid var(--bg); transform:translateX(-50%); z-index:4;
+              box-shadow:0 0 0 1px rgba(255,255,255,.25); }
+.geo .end   { position:absolute; top:34px; font-family:'IBM Plex Mono',monospace;
+              font-size:.7rem !important; font-weight:600; }
+.geo .end.l { left:0;  color:var(--bear) !important; }
+.geo .end.r { right:0; color:var(--bull) !important; }
+.geo .tlab  { position:absolute; top:-4px; font-family:'IBM Plex Mono',monospace;
+              font-size:.7rem !important; color:var(--text) !important; font-weight:700;
+              transform:translateX(-50%); white-space:nowrap; }
+.geo .plab  { position:absolute; top:34px; font-family:'IBM Plex Mono',monospace;
+              font-size:.7rem !important; color:var(--dim) !important;
+              transform:translateX(-50%); white-space:nowrap; }
 
 .nums { display:flex; gap:2.2rem; margin-top:.9rem; flex-wrap:wrap; }
 .num .k{display:block !important;font-size:.66rem !important;text-transform:uppercase;
@@ -172,17 +186,42 @@ with st.sidebar:
                                default=["ARMED", "TIER1", "TIER2"])
     dir_pick = st.multiselect("Direction", ["bull", "bear"], default=["bull", "bear"])
     max_dist = st.slider("Max distance from trigger (%)", 0.1, 5.0, 1.5, 0.1)
-    hide_weak = st.checkbox(f"Hide R:R below {min_rr:g}", value=True)
+
+    st.markdown("---")
+    st.markdown("#### Reward : Risk")
+    rr_min = st.slider(
+        "Minimum R:R", 0.0, 5.0, float(min_rr), 0.25,
+        help="Trigger→target vs trigger→stop. Below 1.0 the target sits on top "
+             "of the trigger — the pattern is real but the trade isn't worth taking.",
+    )
+    show_unrated = st.checkbox(
+        "Include levels with no R:R", value=False,
+        help="Levels with no computable target. Old scan files also land here.",
+    )
+    st.caption(f"Scanner suppresses alerts below R:R {min_rr:g}. "
+               f"This slider only filters the board.")
+
+def passes_rr(l) -> bool:
+    rr = l.get("risk_reward")
+    if rr is None:
+        return show_unrated
+    return rr >= rr_min
+
 
 rows = [
     l for l in levels
     if l["setup_tf"] in tf_pick and l["tier"] in tier_pick and l["direction"] in dir_pick
-    and abs(l["distance_pct"]) <= max_dist
-    and not (hide_weak and (l.get("risk_reward") if l.get("risk_reward") is not None else 99) < min_rr)
+    and abs(l["distance_pct"]) <= max_dist and passes_rr(l)
 ]
 
 if not rows:
-    st.markdown('<div class="card"><span class="setup">Nothing matches those filters.</span></div>',
+    hidden_by_rr = sum(1 for l in levels if not passes_rr(l))
+    msg = "Nothing matches those filters."
+    if hidden_by_rr:
+        msg += (f" {hidden_by_rr} level(s) are being hidden by the R:R filter — "
+                f"lower the minimum, or tick 'Include levels with no R:R' if this "
+                f"scan predates the R:R field.")
+    st.markdown(f'<div class="card"><span class="setup">{msg}</span></div>',
                 unsafe_allow_html=True)
     st.stop()
 
@@ -195,29 +234,56 @@ for l in rows:
     hue = "var(--bull)" if d == "bull" else "var(--bear)"
     rr = l.get("risk_reward")
     hot = l["family"] == "f2" and tier == "TIER1"
-    weak = rr is not None and min_rr > 0 and rr < min_rr
+    weak = rr is not None and rr < 1.0
 
     cls = {"TIER2": f"t2{d}", "TIER1": "t1", "ARMED": ""}[tier] + (" weak" if weak else "")
     tag_cls = {"TIER2": f"t2{d}", "TIER1": "t1", "ARMED": "armed"}[tier]
     tag_txt = {"TIER2": "Tier 2", "TIER1": "Tier 1", "ARMED": "Armed"}[tier]
 
-    # ---- distance rail ----
-    scale = max(max_dist, 0.1)
-    off = max(-1.0, min(1.0, l["distance_pct"] / scale)) * 46
-    dot = 50 + off
+    # ---- trade geometry: STOP | trigger | TARGET, to scale ----
+    # Position everything on one axis running stop -> target. Works for bear
+    # too: there stop is ABOVE and target BELOW, so the axis simply descends
+    # in price. The maths is identical, and the picture reads the same way:
+    # left is where you're wrong, right is where you're paid.
+    stop_p = l.get("invalidation")
+    tgt_p = l.get("target")
+    trig_p = l["level"]
+    px = l["current_price"]
     through = l["distance_pct"] > 0
-    fill_col = hue if through else "var(--slate)"
-    lo, hi = (min(50, dot), max(50, dot))
-    dist_txt = (f"{abs(l['distance_pct']):.2f}% through" if through
-                else f"{abs(l['distance_pct']):.2f}% away")
+
+    geo_html = ""
+    if stop_p is not None and tgt_p is not None and (tgt_p - stop_p) != 0:
+        def pos(v):
+            return max(0.0, min(100.0, (v - stop_p) / (tgt_p - stop_p) * 100))
+
+        t_pos = pos(trig_p)          # trigger's place on the axis
+        p_pos = pos(px)              # where price actually is
+        dot_col = hue if through else "var(--slate)"
+
+        geo_html = f"""
+  <div class="geo">
+    <div class="bar">
+      <div class="risk" style="width:{t_pos}%"></div>
+      <div class="rew"  style="width:{100 - t_pos}%"></div>
+    </div>
+    <div class="trig" style="left:{t_pos}%"></div>
+    <div class="tlab" style="left:{t_pos}%">TRIGGER {trig_p:.2f}</div>
+    <div class="dot"  style="left:{p_pos}%;background:{dot_col};"></div>
+    <div class="plab" style="left:{p_pos}%">now {px:.2f}</div>
+    <div class="end l">STOP {stop_p:.2f}</div>
+    <div class="end r">TARGET {tgt_p:.2f}</div>
+  </div>"""
 
     stop_txt = f"{l['invalidation']:.2f}" if l.get("invalidation") is not None else "—"
     tgt_txt = f"{l['target']:.2f}" if l.get("target") is not None else "—"
     rr_txt = f"{rr:.1f}" if rr is not None else "—"
     rr_cls = "bad" if weak else ("good" if (rr is not None and rr >= 2) else "")
 
-    foot = [{"TIER2": "15m closed through", "TIER1": "5m closed through",
-             "ARMED": "loaded, not triggered"}[tier]]
+    dist_txt = (f"{abs(l['distance_pct']):.2f}% through trigger" if through
+                else f"{abs(l['distance_pct']):.2f}% from trigger")
+    foot = [dist_txt,
+            {"TIER2": "15m closed through", "TIER1": "5m closed through",
+             "ARMED": "not triggered"}[tier]]
     if tier == "TIER1" and l.get("minutes_to_next_15m") is not None:
         m = l["minutes_to_next_15m"]
         foot.append("15m closing now" if m <= 1 else f"15m closes in {m}m")
@@ -240,14 +306,7 @@ for l in rows:
     <span class="setup">{l['setup_tf']} · {l['pattern']}</span>
   </div>
   <div class="thesis">Needs a close <b>{l['trigger_side']} {l['level']:.2f}</b> · now <b>{l['current_price']:.2f}</b></div>
-  <div class="rail">
-    <div class="track"></div>
-    <div class="fill" style="left:{lo}%;width:{hi-lo}%;background:{fill_col};"></div>
-    <div class="tick"></div>
-    <div class="dot" style="left:{dot}%;background:{fill_col};"></div>
-    <div class="lbl" style="left:0;">{dist_txt}</div>
-    <div class="lbl" style="right:0;">trigger {l['level']:.2f}</div>
-  </div>
+  {geo_html}
   <div class="nums">
     <span class="num"><span class="k">Trigger</span><span class="v">{l['level']:.2f}</span></span>
     <span class="num"><span class="k">Stop</span><span class="v">{stop_txt}</span></span>
