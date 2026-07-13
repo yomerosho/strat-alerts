@@ -1,0 +1,51 @@
+name: Test Telegram Alerts
+
+# Click "Run workflow" in the Actions tab, pick a mode, and check your phone.
+#
+#   sample  -- one of each alert type (ARM / Tier 1 / Tier 1 F2 / Tier 2) built
+#              from fake data. Proves the bot token, chat IDs, and Markdown all
+#              work. Safe any time, including weekends and after hours.
+#
+#   live    -- every level currently armed on your real watchlist, force-sent
+#              with the proximity, R:R, continuity and dedup gates ALL bypassed.
+#              Shows you exactly what a real alert will look like with real
+#              numbers. Nothing is written to the dedup store, so your actual
+#              alerts are untouched.
+#
+# Neither mode commits anything to the repo.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "sample = fake data · live = your real armed levels"
+        type: choice
+        options: [sample, live]
+        default: sample
+
+permissions:
+  contents: read   # deliberately cannot push
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - run: pip install -r requirements.txt
+
+      - name: Send test alerts
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          ALPACA_DATA_FEED: ${{ secrets.ALPACA_DATA_FEED }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          LOG_LEVEL: INFO
+        run: python main.py --test-telegram ${{ inputs.mode }}
