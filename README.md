@@ -1,64 +1,134 @@
-# Strat Scanner — Built for 0DTE Confluence Trading
+# Strat Scanner v4 — Armed Levels
 
-Detects "The Strat" (Rob Smith) patterns and alerts you only when:
-1. **FTFC (Full Timeframe Continuity)** agrees across **15Min / 30Min / 1H / 4H / 1D**, and
-2. A live trigger fires on an **entry timeframe** (**5Min / 15Min**) in that same direction.
+## What changed and why
 
-That's the actual confluence signal you'd act on — not a generic single-timeframe blip. The engine (GitHub Actions) checks this every 5 minutes and pushes a Telegram/WhatsApp alert when it lines up. The dashboard (Streamlit) shows the same logic live for ad-hoc checks, with a "Live Confluence Signals" section right at the top showing exactly what would have alerted you.
+v3 alerted on **completed** patterns. A confirmed 4H 2-1-2 means the third candle already closed — the move is over. You were being notified about trades you'd already missed.
 
-## Why no 1W/1M
-
-Removed entirely. Weekly/monthly bias doesn't matter when you're flat by end of day on 0DTE — only the higher *intraday* timeframes (up through Daily) matter for bias, and the fast timeframes matter for the actual entry trigger.
-
-## Architecture
+v4 detects setups while they're still **armed**, publishes the trigger level, and stages alerts as lower timeframes confirm.
 
 ```
-config.py     Watchlist + settings. TIMEFRAMES = 5Min/15Min/30Min/1H/4H/1D.
-              FTFC_TIMEFRAMES = 15Min/30Min/1H/4H/1D. ENTRY_TIMEFRAMES = 5Min/15Min.
-scanner.py    Strat labeling (1/2U/2D/3), trigger detection, Alpaca fetch.
-              bar_period_has_closed() correctly handles intraday/daily bar
-              boundaries so "last bar" timestamps are never stale.
-main.py       Per-symbol: fetches all 6 timeframes, computes FTFC, checks
-              entry timeframes for a matching trigger, alerts only on that
-              confluence (debounced so it won't re-fire on the same state).
-alerting.py   Telegram + WhatsApp (Twilio) delivery, SQLite debounce store.
-.github/workflows/strat-scanner.yml   Cron every 5 minutes (fastest
-              practical free-tier interval)
-dashboard/app.py   Password-gated Streamlit viewer: live confluence
-              signals up top, per-timeframe tabs with filters below.
+ARMED ──5m close through──▶ TIER 1 ──15m close through──▶ TIER 2
+ 👀                          ⚡                             🎯
 ```
 
-## Default watchlist
-
-`SPY QQQ IWM DIA AAPL AMD AMZN GOOG GOOGL META MSFT NVDA PLTR TSLA` — mostly index ETFs and mega-caps, which is where 0DTE liquidity actually lives. Edit `tickers.txt` to change it.
+Setups arm on **2H and 4H only**. Nothing arms on 15m or below anymore. That's the noise reduction.
 
 ---
 
-## Alerting setup
-See `.env.example` for Telegram and Twilio WhatsApp setup instructions (same as before — nothing changed there).
+## 🔴 The bug you were trading on
+
+Your v3 `resample_to_4h` built 4H bars by bucketing Alpaca's **1-Hour** bars from a 09:30 anchor. Two things broke it:
+
+1. Alpaca stamps hourly bars **on the hour** (09:00, 10:00, …). The 09:00 bar is the one that *contains* the 09:30 open — and it was filtered out because `09:00 < 09:30`.
+2. Alpaca returns **extended-hours** bars by default (04:00–20:00 ET). Nothing "naturally truncated at 16:00" the way the docstring assumed.
+
+Actual output:
+
+```
+"09:30" 4H bar  →  contained 10:00, 11:00, 12:00, 13:00   ← no market open
+"13:30" 4H bar  →  contained 14:00, 15:00, 16:00, 17:00   ← 2h of after-hours
+"17:30" 4H bar  →  phantom bar of pure evening tape
+```
+
+**Every 4H signal the scanner ever produced was computed on the wrong candles.** Not slightly off — the opening range was absent entirely.
+
+**The fix:** build everything from **5-minute** bars, explicitly filter to RTH, and bucket from the 09:30 session open. 5m bars nest exactly into 15m/30m/1H/2H/4H boundaries, so no bar straddles an edge. Session-aligned buckets:
+
+```
+4H:  09:30–13:30 │ 13:30–16:00               (2nd is a 2.5h stub)
+2H:  09:30–11:30 │ 11:30–13:30 │ 13:30–15:30 │ 15:30–16:00
+```
+
+The trailing stub is real and is kept — it's what TradingView shows, and a lot of afternoon resolution happens there.
+
+**Verify this before trusting anything.** Run `python main.py --dry-run`, take the 4H levels it prints, and put them next to your TradingView chart. They must match. If they don't, stop and tell me.
 
 ---
 
-## Deploying
+## The core abstraction
 
-### GitHub Actions (engine)
-Same process as before — push to GitHub, add secrets (`ALPACA_API_KEY`, `ALPACA_SECRET_KEY`, `TELEGRAM_*` and/or `TWILIO_*`), enable Actions, manually trigger once to confirm, then it runs itself every 5 minutes.
+Every Strat setup collapses to one object:
 
-Optional: `ALPACA_DATA_FEED=sip` if you have a subscription that includes the full consolidated tape (e.g. Algo Trader Plus) — otherwise it defaults to IEX-only data.
+> *"If a bar closes on THIS SIDE of THIS LEVEL, the trade is on."*
 
-### Streamlit dashboard (viewer)
-Same as before — deploy from `dashboard/app.py`, set `APP_PASSWORD` / `GITHUB_OWNER` / `GITHUB_REPO` / `GITHUB_BRANCH` as Streamlit secrets.
+Six named patterns, one machine. The pattern name is a **label on the alert**, not a branch in the logic.
+
+### Family A — inside-bar setups (2-1-2, 3-1-2, 1-1-2)
+Arms off the **last CLOSED** setup bar. An inside bar has no direction, so **both** edges arm: high → bullish breakout, low → bearish breakdown. Trigger = close **beyond** the level.
+
+### Family B — Failed 2 (F2U / F2D)
+Arms off the **currently FORMING** setup bar. Price pokes through the prior bar's high, fails, and traps the breakout buyers. Trigger = close **back inside** the level.
+
+That's why `trigger_side` is an explicit field: Family A closes *away* from the level, Family B closes *back through* it.
+
+F2 also tracks the **breach time** — only 5m closes *after* the poke count as a failure. Price was below the prior high before the poke too; that doesn't mean anything.
 
 ---
 
-## Cost / limits reality check
+## State is a pure function of bar data
 
-- **GitHub Actions:** free/unlimited on a public repo. On a private repo, 2,000 free minutes/month. At every 5 minutes (~288 runs/day) with 14 tickers × 6 timeframes per run, each run still finishes in well under a minute, so you'll stay inside the free tier for personal use — but it's worth keeping an eye on usage if you significantly expand the watchlist.
-- **GitHub Actions cron isn't millisecond-precise.** Expect occasional multi-minute slippage during platform load. For a strategy where you're in and out within 30 minutes, treat alerts as "go check your chart now," not a guaranteed instant signal. If you need tighter timing than free Actions can offer, the VPS continuous-loop mode (`python main.py`, no `--once` flag) can poll every 30-60 seconds instead — ask if you want that walkthrough.
-- Alpaca's IEX feed can miss brief high/low prints from other exchanges, which can occasionally cause a Strat label to differ from what a full-tape platform (like TradingView) shows. Switch to `ALPACA_DATA_FEED=sip` if you have that entitlement.
-- This is detection/alerting only — no order/trade execution logic anywhere.
-- 4H bars are synthetic (built from 1H bars), anchored to the 9:30 ET open.
+Armed levels and tier status are re-derived from scratch every scan. Nothing is carried forward.
 
-## If you ever want to scale up to a VPS instead
+This matters because the scanner runs on a **fresh GitHub Actions VM every cycle** — persisted state was always the fragile part. The SQLite DB now tracks exactly one thing: *"have I already sent this alert?"*
 
-`python main.py --once` → single scan, used by GitHub Actions. `python main.py` (no flag) → continuous service for a VPS with systemd (`strat-scanner.service` included). Same dual-mode design as before.
+Expiry falls out for free. If the last closed setup bar is no longer an inside bar, no level arms. Nothing to expire, nothing to leak.
+
+Dedup is by **level identity** — `symbol | setup_tf | setup_bar_timestamp | pattern | direction`. That identity doesn't flicker, so price can chop across the trigger all afternoon and you will not be spammed. The v3 cooldown hack is gone.
+
+---
+
+## Two things I'd flag as *yours* to decide, not mine
+
+**1. F2 at Tier 1.** `F2_TIER1_ACTIONABLE=true` marks Failed-2 Tier 1 alerts as 🔥 act-now, on the theory that trapped-trader unwinds move fast enough that waiting for the 15m hands back most of the move. **That's a plausible mechanism, not a proven edge.** Watch it live for a few weeks. If F2 Tier 1s keep failing, set it `false` and F2 waits for the 15m like everything else.
+
+**2. DTE selection.** Nothing in this code picks your expiry. A 4H setup targeting the prior 4H high can take a full session to resolve, so +1/+2 DTE is directionally right — but log actual time-to-target on every trade for a month and set the rule from your own data, not a rule of thumb.
+
+---
+
+## Files
+
+| File | What it does |
+|---|---|
+| `bars.py` | Fetching + session-aligned resampling. **The bug fix lives here.** |
+| `strat.py` | Bar labeling (1 / 2U / 2D / 3), continuity score. Pure functions. |
+| `levels.py` | `ArmedLevel`, the two arming families, tier promotion. The core. |
+| `scanner.py` | Per-symbol orchestration. |
+| `alerting.py` | Telegram + dedup store + the three alert formats. |
+| `main.py` | Entry point. |
+| `test_v4.py` | 30 checks, no network. Includes a regression test for the 4H bug. |
+| `dashboard_app.py` | Streamlit board → rename to `dashboard/app.py` |
+| `strat-scanner.yml` | → `.github/workflows/strat-scanner.yml` |
+
+Also: one Alpaca call per symbol instead of six. v3 made a request per (symbol, timeframe) — 84 per scan on a 14-symbol list. Now everything intraday is derived from one 5-minute pull, which also guarantees a 15m close and a 4H high can never disagree with each other.
+
+---
+
+## Rollout
+
+```bash
+# 1. Tests first — they should all pass before anything touches the market
+python test_v4.py
+
+# 2. Dry run: prints the board and every alert it WOULD send. Sends nothing.
+python main.py --dry-run
+
+# 3. Check the 4H levels against TradingView. Do not skip this.
+
+# 4. Wipe v3's alert state (schema changed) and go live
+rm scanner_state.db
+python main.py --once
+```
+
+**cron-job.org:** keep the 5-minute cadence — it matches the Tier 1 (5m close) rhythm. Fire ~60s *after* each 5-minute boundary so the bar has settled at Alpaca. Scope it to **09:30–16:00 ET, Mon–Fri** — it's currently firing at all hours.
+
+---
+
+## Config knobs
+
+| Env var | Default | Notes |
+|---|---|---|
+| `PROXIMITY_ALERT_PCT` | `0.75` | Only send 👀 ARM alerts when price is within this % of the level. Tier 1/2 are never proximity-gated — they already triggered. |
+| `MIN_CONTINUITY_TIER1` | `0` (off) | v3's 4/5 gate was silently eating setups. With 2H/4H-only you have far fewer, better candidates — start with the gate off and only turn it on if the board gets busy. |
+| `MIN_CONTINUITY_TIER2` | `0` (off) | Same. |
+| `F2_TIER1_ACTIONABLE` | `true` | See above. |
+| `ENABLE_FAILED_TWO` | `true` | Set `false` to ship Family A first and add F2 once you trust it. |

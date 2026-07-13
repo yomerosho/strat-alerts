@@ -1,9 +1,23 @@
 """
 alerting.py
 -----------
-AlertManager: sends Strat setup notifications to Telegram.
-StateStore: SQLite-backed "last known state" so alerts only fire once per
-            new setup/trigger instead of spamming every scan cycle.
+Telegram delivery + alert de-duplication.
+
+Dedup, not debounce
+===================
+v3 tracked "the last setup key per symbol/timeframe" and compared it each
+cycle. That's a debounce, and it was fragile: any flicker in the state string
+re-fired the alert, which is why a cooldown had to be bolted on top.
+
+v4 doesn't need any of that. An armed level has a stable identity -- symbol,
+setup timeframe, the timestamp of the bar that armed it, pattern, direction.
+That identity does not flicker. So the store answers exactly one question:
+
+    "Have I already sent the TIER1 (or TIER2) alert for THIS level?"
+
+Fire once, never again. No cooldown, no flapping, no state string to corrupt.
+Price can chop back and forth across the trigger all afternoon and you will
+not be spammed, because the level's identity never changed.
 """
 
 from __future__ import annotations
@@ -12,53 +26,30 @@ import asyncio
 import logging
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 import aiohttp
+import pandas as pd
+
+from levels import FAMILY_F2, TIER1, TIER2, ArmedLevel
 
 logger = logging.getLogger("strat_scanner.alerting")
 
 
-class StateStore:
-    """Persists the last alerted setup-key per (symbol, timeframe) in SQLite,
-    so the debounce survives restarts -- not just in-memory state.
-
-    Two separate things are tracked:
-    - setup_key / updated_at: the latest seen state, updated every cycle.
-      Used to detect "did anything change since last time" (the debounce).
-    - last_alert_at: only updated when an alert is actually SENT. Used for
-      the cooldown, which is a different concept from debounce -- it
-      suppresses rapid flapping (the same symbol crossing its trigger
-      level back and forth) even though each flap technically counts as
-      "a change," without blocking a genuinely new setup once enough time
-      has passed.
-    """
-
+class AlertStore:
     def __init__(self, db_path: Path):
         self.db_path = db_path
-        self._init_db()
-
-    def _init_db(self) -> None:
         with self._conn() as conn:
             conn.execute(
                 """
-                CREATE TABLE IF NOT EXISTS last_state (
-                    symbol TEXT NOT NULL,
-                    timeframe TEXT NOT NULL,
-                    setup_key TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    last_alert_at TEXT,
-                    PRIMARY KEY (symbol, timeframe)
+                CREATE TABLE IF NOT EXISTS sent_alerts (
+                    level_key TEXT NOT NULL,
+                    tier      TEXT NOT NULL,
+                    sent_at   TEXT NOT NULL,
+                    PRIMARY KEY (level_key, tier)
                 )
                 """
             )
-            # Migration for databases created before last_alert_at existed.
-            try:
-                conn.execute("ALTER TABLE last_state ADD COLUMN last_alert_at TEXT")
-            except sqlite3.OperationalError:
-                pass  # column already exists
 
     @contextmanager
     def _conn(self):
@@ -69,134 +60,178 @@ class StateStore:
         finally:
             conn.close()
 
-    def get_last_setup_key(self, symbol: str, timeframe: str) -> Optional[str]:
+    def already_sent(self, level_key: str, tier: str) -> bool:
         with self._conn() as conn:
             row = conn.execute(
-                "SELECT setup_key FROM last_state WHERE symbol = ? AND timeframe = ?",
-                (symbol, timeframe),
+                "SELECT 1 FROM sent_alerts WHERE level_key = ? AND tier = ?",
+                (level_key, tier),
             ).fetchone()
-            return row[0] if row else None
+            return row is not None
 
-    def set_last_setup_key(self, symbol: str, timeframe: str, setup_key: str) -> None:
+    def mark_sent(self, level_key: str, tier: str) -> None:
         with self._conn() as conn:
             conn.execute(
-                """
-                INSERT INTO last_state (symbol, timeframe, setup_key, updated_at)
-                VALUES (?, ?, ?, datetime('now'))
-                ON CONFLICT(symbol, timeframe)
-                DO UPDATE SET setup_key = excluded.setup_key, updated_at = excluded.updated_at
-                """,
-                (symbol, timeframe, setup_key),
+                "INSERT OR REPLACE INTO sent_alerts (level_key, tier, sent_at) "
+                "VALUES (?, ?, datetime('now'))",
+                (level_key, tier),
             )
 
-    def minutes_since_last_alert(self, symbol: str, timeframe: str) -> Optional[float]:
-        """Minutes since an alert was actually sent for this symbol, or
-        None if one has never been sent."""
-        with self._conn() as conn:
-            row = conn.execute(
-                "SELECT last_alert_at FROM last_state WHERE symbol = ? AND timeframe = ?",
-                (symbol, timeframe),
-            ).fetchone()
-            if not row or not row[0]:
-                return None
-            last_alert = datetime.fromisoformat(row[0])
-            return (datetime.utcnow() - last_alert).total_seconds() / 60
-
-    def record_alert_sent(self, symbol: str, timeframe: str) -> None:
+    def prune(self, days: int = 7) -> None:
+        """Keep the committed DB small -- it rides in the git repo."""
         with self._conn() as conn:
             conn.execute(
-                """
-                INSERT INTO last_state (symbol, timeframe, setup_key, updated_at, last_alert_at)
-                VALUES (?, ?, '', datetime('now'), datetime('now'))
-                ON CONFLICT(symbol, timeframe)
-                DO UPDATE SET last_alert_at = excluded.last_alert_at
-                """,
-                (symbol, timeframe),
+                "DELETE FROM sent_alerts WHERE sent_at < datetime('now', ?)",
+                (f"-{days} days",),
             )
 
 
 class AlertManager:
-    """Fan-out alert sender. Add more channels by adding a `_send_x` method
-    and wiring it into `send()`."""
-
-    def __init__(
-        self,
-        telegram_bot_token: str = "",
-        telegram_chat_id: Optional[list] = None,
-    ):
-        self.telegram_bot_token = telegram_bot_token
-        self.telegram_chat_ids = telegram_chat_id or []
+    def __init__(self, telegram_bot_token: str = "", telegram_chat_id: list[str] | None = None):
+        self.token = telegram_bot_token
+        self.chat_ids = telegram_chat_id or []
 
     async def send(self, message: str) -> None:
+        if not self.token or not self.chat_ids:
+            logger.info("No Telegram configured; would have sent:\n%s", message)
+            return
         async with aiohttp.ClientSession() as session:
-            tasks = []
-            if self.telegram_bot_token:
-                for chat_id in self.telegram_chat_ids:
-                    tasks.append(self._send_telegram(session, chat_id, message))
-            if tasks:
-                await asyncio.gather(*tasks)
+            await asyncio.gather(
+                *(self._send_telegram(session, cid, message) for cid in self.chat_ids)
+            )
 
     async def _send_telegram(self, session: aiohttp.ClientSession, chat_id: str, message: str) -> None:
-        url = f"https://api.telegram.org/bot{self.telegram_bot_token}/sendMessage"
+        url = f"https://api.telegram.org/bot{self.token}/sendMessage"
         payload = {"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}
         try:
-            async with session.post(url, json=payload, timeout=10) as resp:
+            async with session.post(url, json=payload, timeout=15) as resp:
                 if resp.status >= 300:
-                    logger.error("Telegram send to %s failed (%s): %s", chat_id, resp.status, await resp.text())
+                    logger.error("Telegram %s -> %s: %s", chat_id, resp.status, await resp.text())
         except Exception:
-            logger.exception("Error sending Telegram alert to %s", chat_id)
+            logger.exception("Telegram send failed for %s", chat_id)
 
 
+# --------------------------------------------------------------------------
+# Formatting
+# --------------------------------------------------------------------------
 
-def format_watch_alert(
-    symbol: str,
-    timeframe: str,
-    pattern,  # scanner.DetectedPattern -- avoiding circular import in type hints
-    continuity_score: str,
-    pmg_note: str = "",
-) -> str:
-    """Anticipatory alert: a named Strat setup just formed on a higher
-    timeframe (1H/4H/1D by default). No entry timeframe trigger yet --
-    this is the "get your chart open" signal, sent once per fresh setup."""
-    emoji = "🟢" if pattern.direction == "bull" else "🔴"
-    word = "BULLISH" if pattern.direction == "bull" else "BEARISH"
+def _fmt_time(ts: pd.Timestamp | None) -> str:
+    return ts.strftime("%H:%M ET") if ts is not None else "--"
+
+
+def _arrow(direction: str) -> str:
+    return "🟢" if direction == "bull" else "🔴"
+
+
+def _word(direction: str) -> str:
+    return "BULLISH" if direction == "bull" else "BEARISH"
+
+
+def format_arm_alert(lv: ArmedLevel) -> str:
+    """
+    👀 Level is armed and price is approaching. No confirmation yet.
+
+    This is the alert v3 never had, and it's the one that matters most: the
+    trade hasn't happened. You have time to pull up the chart, check context,
+    and decide whether you even want it before anything triggers.
+    """
+    side = "above" if lv.trigger_side == "above" else "below"
     lines = [
-        f"👀 {emoji} **{symbol}** [{timeframe}] — {word} {pattern.name} forming",
-        pattern.note,
-        f"Continuity: {continuity_score} timeframes agree {word.lower()}",
+        f"👀 {_arrow(lv.direction)} *{lv.symbol}* — {lv.setup_tf} {lv.pattern} ARMED",
+        f"{_word(lv.direction)} · needs a close {side} *{lv.level:.2f}*",
+        "",
+        f"Price:  {lv.current_price:.2f}  ({abs(lv.distance_pct):.2f}% away)",
     ]
-    if pattern.stop_level is not None:
-        lines.append(f"Stop reference: {pattern.stop_level:.2f}")
-    lines.append("Watch your 5m/15m now for the entry trigger.")
-    if pmg_note:
-        lines.append(f"⚠️ {pmg_note}")
+    if lv.invalidation is not None:
+        lines.append(f"Invalid below: {lv.invalidation:.2f}" if lv.direction == "bull"
+                     else f"Invalid above: {lv.invalidation:.2f}")
+    if lv.target is not None:
+        lines.append(f"Target: {lv.target:.2f}")
+    lines.append(f"Continuity: {lv.continuity}")
+    if lv.setup_bar_closes_at is not None:
+        lines.append(f"{lv.setup_tf} bar closes: {_fmt_time(lv.setup_bar_closes_at)}")
+    lines.append("")
+    lines.append("_Not triggered yet. Get the chart up._")
     return "\n".join(lines)
 
 
-def format_entry_alert(
-    symbol: str,
-    timeframe: str,
-    pattern,  # scanner.DetectedPattern
-    target: Optional[float],
-    continuity_score: str,
-    pmg_note: str = "",
-) -> str:
-    """The actual "go" alert: a named Strat setup printed directly on an
-    entry timeframe (5Min/15Min by default), with a stop derived from the
-    pattern itself and a target borrowed from the next timeframe up."""
-    emoji = "🟢" if pattern.direction == "bull" else "🔴"
-    word = "BULLISH" if pattern.direction == "bull" else "BEARISH"
+def format_tier1_alert(lv: ArmedLevel, f2_actionable: bool) -> str:
+    """
+    ⚡ 5-minute close on the trigger side.
+
+    The level held for one bar. Early, and worth acting on -- but the 15m
+    hasn't confirmed yet, and the nesting means that could be 10 minutes away
+    or 30 seconds away. The alert tells you which, because that changes
+    whether waiting costs you anything.
+    """
+    is_f2 = lv.family == FAMILY_F2
+    hot = is_f2 and f2_actionable
+
+    header = "🔥 ⚡" if hot else "⚡"
     lines = [
-        f"🎯 {emoji} **{symbol}** [{timeframe}] — {word} {pattern.name} ENTRY",
-        pattern.note,
-        f"Continuity: {continuity_score} timeframes agree {word.lower()}",
+        f"{header} {_arrow(lv.direction)} *{lv.symbol}* — {lv.setup_tf} {lv.pattern} · TIER 1",
+        f"5m closed {lv.trigger_side} *{lv.level:.2f}*  ({lv.distance_pct:+.2f}% through)",
+        "",
+        f"Price:  {lv.current_price:.2f}",
+        f"Confirmed at: {_fmt_time(lv.tier1_time)}",
     ]
-    if pattern.stop_level is not None:
-        lines.append(f"Stop: {pattern.stop_level:.2f}")
-    if target is not None:
-        lines.append(f"Target: {target:.2f} (next higher timeframe's level)")
+
+    if lv.minutes_to_next_15m is not None:
+        if lv.minutes_to_next_15m <= 1:
+            lines.append("15m closing *now* — Tier 2 lands immediately")
+        else:
+            lines.append(f"15m closes in *{lv.minutes_to_next_15m} min*")
+
+    if lv.invalidation is not None:
+        lines.append(f"Stop ref: {lv.invalidation:.2f}")
+    if lv.target is not None:
+        lines.append(f"Target: {lv.target:.2f}")
+    lines.append(f"Continuity: {lv.continuity}")
+    if lv.setup_bar_closes_at is not None:
+        lines.append(f"{lv.setup_tf} bar closes: {_fmt_time(lv.setup_bar_closes_at)}")
+
+    lines.append("")
+    if hot:
+        lines.append("🔥 *F2 — trapped traders unwind fast. This is the actionable tier;*")
+        lines.append("*waiting for the 15m may hand back most of the move.*")
     else:
-        lines.append("Target: no higher-timeframe data available -- use your own judgment")
-    if pmg_note:
-        lines.append(f"⚠️ {pmg_note}")
+        lines.append("_Starter size, or wait for Tier 2._")
     return "\n".join(lines)
+
+
+def format_tier2_alert(lv: ArmedLevel) -> str:
+    """
+    🎯 15-minute close on the trigger side. The level held.
+
+    For inside-bar setups this is the conviction entry. For an F2 it's a
+    "still going" confirmation -- if you took the Tier 1, this says stay in.
+    """
+    is_f2 = lv.family == FAMILY_F2
+    lines = [
+        f"🎯 {_arrow(lv.direction)} *{lv.symbol}* — {lv.setup_tf} {lv.pattern} · TIER 2",
+        f"15m closed {lv.trigger_side} *{lv.level:.2f}*  ({lv.distance_pct:+.2f}% through)",
+        "",
+        f"Price:  {lv.current_price:.2f}",
+        f"Confirmed at: {_fmt_time(lv.tier2_time)}",
+    ]
+    if lv.tier1_time is not None:
+        lines.append(f"Tier 1 was: {_fmt_time(lv.tier1_time)}")
+    if lv.invalidation is not None:
+        lines.append(f"Stop ref: {lv.invalidation:.2f}")
+    if lv.target is not None:
+        lines.append(f"Target: {lv.target:.2f}")
+    lines.append(f"Continuity: {lv.continuity}")
+    if lv.setup_bar_closes_at is not None:
+        lines.append(f"{lv.setup_tf} bar closes: {_fmt_time(lv.setup_bar_closes_at)}")
+
+    lines.append("")
+    lines.append("_Continuation confirmation — if you took Tier 1, it's holding._"
+                 if is_f2 else "_Conviction tier._")
+    return "\n".join(lines)
+
+
+def format_for_tier(lv: ArmedLevel, tier: str, f2_actionable: bool) -> str:
+    if tier == TIER2:
+        return format_tier2_alert(lv)
+    if tier == TIER1:
+        return format_tier1_alert(lv, f2_actionable)
+    return format_arm_alert(lv)
