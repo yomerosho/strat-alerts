@@ -32,65 +32,85 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter+Tight:wght@400;600;700;800&display=swap');
 
 :root {
-  --bg:#0e141b; --surface:#151d27; --surface-2:#1b2532; --line:#26303f;
-  --text:#dbe4ee; --dim:#71829a;
-  --bull:#3fd07f; --bear:#ff5f56; --amber:#f0b429; --slate:#55657c;
+  --bg:#0d1319; --surface:#18212c; --surface-2:#243040; --line:#31405280;
+  --text:#f1f6fb;      /* near-white: primary numbers must PUNCH */
+  --dim:#a8bacd;       /* labels: readable, not decorative */
+  --faint:#7f93a8;
+  --bull:#3fe08a; --bear:#ff6b62; --amber:#ffc043; --slate:#7d90a8;
 }
 .stApp { background:var(--bg); }
-html, body, [class*="css"] { font-family:'Inter Tight',system-ui,sans-serif; color:var(--text); }
+html, body, [class*="css"] { font-family:'Inter Tight',system-ui,sans-serif; }
 section[data-testid="stSidebar"] { background:var(--surface); border-right:1px solid var(--line); }
-h1 { font-weight:800; letter-spacing:-.025em; color:var(--text); margin-bottom:0; }
+section[data-testid="stSidebar"] * { color:var(--text) !important; }
 
-.strip { display:flex; gap:2.6rem; padding:.9rem 0 1.3rem; border-bottom:1px solid var(--line);
-         margin-bottom:1.5rem; flex-wrap:wrap; }
-.stat .k { display:block; font-size:.66rem; text-transform:uppercase; letter-spacing:.12em;
-           color:var(--dim); font-weight:600; margin-bottom:.15rem; }
-.stat .v { display:block; font-family:'IBM Plex Mono',monospace; font-size:1.6rem;
-           font-weight:600; line-height:1.05; font-variant-numeric:tabular-nums; }
-.v.amber{color:var(--amber);} .v.live{color:var(--bull);} .v.zero{color:var(--slate);}
+/* Streamlit wraps our HTML and colours it. Force our own. */
+[data-testid="stMarkdownContainer"] h1 { color:var(--text) !important; font-weight:800;
+  letter-spacing:-.03em; font-size:2.3rem; margin-bottom:.2rem; }
 
-.card { background:var(--surface); border:1px solid var(--line); border-left:3px solid var(--slate);
-        border-radius:7px; padding:1rem 1.15rem; margin-bottom:.7rem; }
+.strip { display:flex; gap:2.8rem; padding:1rem 0 1.4rem; border-bottom:1px solid var(--line);
+         margin-bottom:1.6rem; flex-wrap:wrap; }
+.stat .k { display:block !important; font-size:.7rem !important; text-transform:uppercase;
+           letter-spacing:.13em; color:var(--dim) !important; font-weight:700; margin-bottom:.25rem; }
+.stat .v { display:block !important; font-family:'IBM Plex Mono',monospace;
+           font-size:1.85rem !important; font-weight:700; line-height:1;
+           color:var(--text) !important; font-variant-numeric:tabular-nums; }
+.stat .v.amber{color:var(--amber) !important;}
+.stat .v.live {color:var(--bull) !important;}
+.stat .v.zero {color:var(--faint) !important;}
+
+.card { background:var(--surface); border:1px solid var(--line); border-left:4px solid var(--slate);
+        border-radius:8px; padding:1.15rem 1.3rem; margin-bottom:.8rem; }
 .card.t1 { border-left-color:var(--amber);
-           background:linear-gradient(90deg,rgba(240,180,41,.06),var(--surface) 24%); }
+           background:linear-gradient(90deg,rgba(255,192,67,.09),var(--surface) 26%); }
 .card.t2bull { border-left-color:var(--bull);
-           background:linear-gradient(90deg,rgba(63,208,127,.09),var(--surface) 24%); }
+           background:linear-gradient(90deg,rgba(63,224,138,.11),var(--surface) 26%); }
 .card.t2bear { border-left-color:var(--bear);
-           background:linear-gradient(90deg,rgba(255,95,86,.09),var(--surface) 24%); }
-.card.weak { opacity:.48; }
+           background:linear-gradient(90deg,rgba(255,107,98,.11),var(--surface) 26%); }
+.card.weak { opacity:.62; }
 
-.row { display:flex; align-items:baseline; gap:.6rem; flex-wrap:wrap; }
-.sym { font-family:'IBM Plex Mono',monospace; font-size:1.3rem; font-weight:700; }
-.sym.bull{color:var(--bull);} .sym.bear{color:var(--bear);}
-.tag { font-size:.62rem; font-weight:700; text-transform:uppercase; letter-spacing:.1em;
-       padding:.17rem .45rem; border-radius:3px; }
-.tag.armed{background:rgba(85,101,124,.22);color:var(--slate);}
-.tag.t1{background:rgba(240,180,41,.16);color:var(--amber);}
-.tag.t2bull{background:rgba(63,208,127,.16);color:var(--bull);}
-.tag.t2bear{background:rgba(255,95,86,.16);color:var(--bear);}
-.setup { font-family:'IBM Plex Mono',monospace; font-size:.78rem; color:var(--dim); }
+.row { display:flex; align-items:center; gap:.65rem; flex-wrap:wrap; }
+.sym { font-family:'IBM Plex Mono',monospace; font-size:1.45rem !important; font-weight:700; }
+.sym.bull{color:var(--bull) !important;} .sym.bear{color:var(--bear) !important;}
+.tag { font-size:.64rem !important; font-weight:800; text-transform:uppercase; letter-spacing:.11em;
+       padding:.22rem .5rem; border-radius:4px; }
+.tag.armed{background:rgba(125,144,168,.25);color:#c3d0de !important;}
+.tag.t1{background:rgba(255,192,67,.22);color:var(--amber) !important;}
+.tag.t2bull{background:rgba(63,224,138,.22);color:var(--bull) !important;}
+.tag.t2bear{background:rgba(255,107,98,.22);color:var(--bear) !important;}
+.setup { font-family:'IBM Plex Mono',monospace; font-size:.85rem !important;
+         color:var(--dim) !important; font-weight:500; }
 
-.thesis { margin:.55rem 0 0; font-size:.9rem; color:var(--text); }
-.thesis b { font-family:'IBM Plex Mono',monospace; font-weight:600; }
+.thesis { margin:.7rem 0 0; font-size:1rem !important; color:var(--dim) !important; }
+.thesis b { font-family:'IBM Plex Mono',monospace; font-weight:700; color:var(--text) !important; }
 
-.rail { position:relative; height:24px; margin:.8rem 0 .3rem; }
-.rail .track{position:absolute;top:11px;left:0;right:0;height:2px;background:var(--surface-2);border-radius:2px;}
-.rail .fill {position:absolute;top:11px;height:2px;border-radius:2px;}
-.rail .tick {position:absolute;top:3px;left:50%;width:2px;height:18px;background:var(--dim);}
-.rail .dot  {position:absolute;top:6px;width:11px;height:11px;border-radius:50%;
-             border:2px solid var(--bg);transform:translateX(-50%);}
-.rail .lbl  {position:absolute;top:-2px;font-family:'IBM Plex Mono',monospace;font-size:.63rem;color:var(--dim);}
+/* the rail */
+.rail { position:relative; height:30px; margin:1.1rem 0 .5rem; }
+.rail .track{position:absolute;top:14px;left:0;right:0;height:3px;
+             background:var(--surface-2);border-radius:3px;}
+.rail .fill {position:absolute;top:14px;height:3px;border-radius:3px;}
+.rail .tick {position:absolute;top:5px;left:50%;width:3px;height:21px;
+             background:var(--dim);border-radius:2px;}
+.rail .dot  {position:absolute;top:8px;width:15px;height:15px;border-radius:50%;
+             border:3px solid var(--bg);transform:translateX(-50%);}
+.rail .lbl  {position:absolute;top:-4px;font-family:'IBM Plex Mono',monospace;
+             font-size:.72rem !important;color:var(--dim) !important;font-weight:500;}
 
-.nums { display:flex; gap:2rem; margin-top:.75rem; flex-wrap:wrap; }
-.num .k{display:block;font-size:.61rem;text-transform:uppercase;letter-spacing:.1em;
-        color:var(--dim);font-weight:600;margin-bottom:.1rem;}
-.num .v{display:block;font-family:'IBM Plex Mono',monospace;font-size:1rem;font-weight:600;
-        color:var(--text);font-variant-numeric:tabular-nums;}
-.num .v.bad{color:var(--bear);} .num .v.good{color:var(--bull);}
+.nums { display:flex; gap:2.2rem; margin-top:.9rem; flex-wrap:wrap; }
+.num .k{display:block !important;font-size:.66rem !important;text-transform:uppercase;
+        letter-spacing:.11em;color:var(--dim) !important;font-weight:700;margin-bottom:.2rem;}
+.num .v{display:block !important;font-family:'IBM Plex Mono',monospace;
+        font-size:1.15rem !important;font-weight:700;color:var(--text) !important;
+        font-variant-numeric:tabular-nums;}
+.num .v.bad {color:var(--bear) !important;}
+.num .v.good{color:var(--bull) !important;}
 
-.foot { margin-top:.7rem; font-size:.72rem; color:var(--dim); font-family:'IBM Plex Mono',monospace; }
-.foot .hot { color:var(--bear); font-weight:700; }
-.warn { margin-top:.5rem; font-size:.74rem; color:var(--amber); }
+.foot { margin-top:.85rem; font-size:.78rem !important; color:var(--faint) !important;
+        font-family:'IBM Plex Mono',monospace; }
+.foot .hot { color:var(--bear) !important; font-weight:700; }
+.warn { margin-top:.6rem; font-size:.82rem !important; color:var(--amber) !important; font-weight:500; }
+.stale { background:rgba(255,192,67,.1); border:1px solid rgba(255,192,67,.35);
+         border-radius:8px; padding:.8rem 1rem; margin-bottom:1.2rem;
+         color:var(--amber) !important; font-size:.88rem; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -114,6 +134,13 @@ except Exception as e:
 levels = data.get("armed_levels", [])
 min_rr = float(data.get("min_risk_reward", 1.0))
 gen = str(data.get("generated_at_et", data.get("generated_at_utc", "")))[:16].replace("T", " ")
+
+if levels and all("risk_reward" not in l for l in levels):
+    st.markdown(
+        '<div class="stale">This scan was written by the old scanner — '
+        'R:R is missing and the 2H bars still include the 30-minute stub. '
+        'Push the new code and re-run the workflow.</div>',
+        unsafe_allow_html=True)
 
 n1 = sum(1 for l in levels if l["tier"] == "TIER1")
 n2 = sum(1 for l in levels if l["tier"] == "TIER2")
