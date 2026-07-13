@@ -1,0 +1,81 @@
+name: Strat Dry Run
+
+# Click "Run workflow" in the Actions tab. Sends NOTHING to Telegram, commits
+# NOTHING to the repo. It just runs the tests, prints the armed-levels board,
+# and hands you latest_scan.json as a downloadable artifact.
+#
+# This is the safest way to verify v4 before it's allowed near your phone --
+# and it runs on the same Ubuntu + Python + Alpaca setup as production, so a
+# pass here means a pass in the real thing.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tickers:
+        description: "Symbols to scan (space-separated). Blank = use tickers.txt"
+        required: false
+        default: "SPY QQQ TSLA NVDA AAPL"
+      proximity_pct:
+        description: "Only show ARM alerts within this % of the trigger (0 = show all)"
+        required: false
+        default: "0"
+      run_tests:
+        description: "Run the test suite first"
+        type: boolean
+        default: true
+
+# Deliberately no `permissions: contents: write`. This workflow must not be
+# able to push anything.
+permissions:
+  contents: read
+
+jobs:
+  dryrun:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run test suite
+        if: ${{ inputs.run_tests }}
+        run: python test_v4.py
+
+      - name: Override watchlist for this run
+        if: ${{ inputs.tickers != '' }}
+        run: |
+          printf '%s\n' ${{ inputs.tickers }} > tickers.txt
+          echo "Scanning:"
+          cat tickers.txt
+
+      - name: Dry run scan
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          ALPACA_DATA_FEED: ${{ secrets.ALPACA_DATA_FEED }}
+          PROXIMITY_ALERT_PCT: ${{ inputs.proximity_pct }}
+          LOG_LEVEL: INFO
+          # No TELEGRAM_* vars on purpose. Even if --dry-run had a bug, there
+          # is no bot token in this environment for it to send with.
+        run: python main.py --dry-run
+
+      - name: Print raw 4H + 2H bars for eyeballing against TradingView
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          ALPACA_DATA_FEED: ${{ secrets.ALPACA_DATA_FEED }}
+        run: python verify_bars.py
+
+      - name: Upload scan output
+        uses: actions/upload-artifact@v4
+        with:
+          name: scan-output
+          path: latest_scan.json
+          retention-days: 7
