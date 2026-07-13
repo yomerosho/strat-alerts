@@ -1,72 +1,61 @@
 name: Strat Scanner
 
+# Triggered externally by cron-job.org (GitHub's native cron silently disables
+# itself on inactive repos -- that's why this is workflow_dispatch only).
+#
+# Scope the cron-job.org schedule to market hours: 9:30-16:00 ET, Mon-Fri.
+# Every 5 minutes is right: it matches the Tier 1 (5m close) cadence. Fire it
+# ~60s after each 5-minute boundary so the bar has settled at Alpaca before
+# you ask for it.
 on:
-  schedule:
-    # Every 5 minutes, but only Mon-Fri, roughly 7:00 AM - 4:00 PM ET
-    # (premarket through market close). GitHub Actions cron is fixed UTC
-    # and doesn't auto-adjust for daylight saving, so this range is the
-    # UNION of both DST cases -- it'll run an extra hour on one edge
-    # depending on the season (e.g. starting at 6 AM ET instead of 7 AM
-    # during EST, or running until 5 PM ET instead of 4 PM during EDT).
-    # Harmless -- just a few extra low-value runs, not missed coverage.
-    # Doesn't account for market holidays; those runs just won't find
-    # anything new to alert on.
-    - cron: "*/5 11-21 * * 1-5"  # reactivated
-  workflow_dispatch: {}  # lets you click "Run workflow" manually in the Actions tab
+  workflow_dispatch: {}
 
 permissions:
-  contents: write  # needed so the workflow can commit the updated state DB back to the repo
+  contents: write
 
 concurrency:
   group: strat-scanner
-  cancel-in-progress: false  # never cancel a mid-flight scan; let it finish and let the next one queue
+  cancel-in-progress: false
 
 jobs:
   scan:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: "pip"
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - run: pip install -r requirements.txt
 
-      - name: Run one scan cycle
+      - name: Scan
         env:
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
           ALPACA_DATA_FEED: ${{ secrets.ALPACA_DATA_FEED }}
-          ALERT_COOLDOWN_MINUTES: ${{ secrets.ALERT_COOLDOWN_MINUTES }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # Uncomment to gate alerts on continuity (0 = off, the default):
+          # MIN_CONTINUITY_TIER1: "3"
+          # MIN_CONTINUITY_TIER2: "4"
+          PROXIMITY_ALERT_PCT: "0.75"
           LOG_LEVEL: INFO
         run: python main.py --once
 
-      - name: Persist debounce state back to the repo
-        # The runner is a fresh VM every time, so scanner_state.db (and any 
-        # tickers.txt edits made via --add-ticker) only survive between runs
-        # if we commit them back. Without this step you'd get a duplicate
-        # alert every single run.
+      - name: Persist alert-dedup state
+        # The runner is a fresh VM each time. sent_alerts must survive between
+        # runs or you'd get a duplicate alert every 5 minutes.
         run: |
-          git config user.name "strat-scanner-bot"
+          git config user.name  "strat-scanner-bot"
           git config user.email "actions@users.noreply.github.com"
           git add scanner_state.db tickers.txt latest_scan.json
           if ! git diff --cached --quiet; then
-            git commit -m "Update scanner state [skip ci]"
-            # Pull any changes made elsewhere (e.g. manual edits via the
-            # GitHub web UI, or another run that finished first) since this
-            # job's checkout, so the push below doesn't get rejected as
-            # non-fast-forward. --rebase replays our commit on top of the
-            # latest remote history instead of merging.
+            git commit -m "scan state [skip ci]"
             git pull --rebase origin "${GITHUB_REF_NAME}"
             git push
           else
-            echo "No state changes to commit."
+            echo "No changes."
           fi
