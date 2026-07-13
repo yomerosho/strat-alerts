@@ -241,6 +241,40 @@ def _merge_trailing_stubs(buckets: pd.Series, minutes: int) -> tuple[pd.Series, 
     return remapped, absorbed
 
 
+def resample_weekly(daily: pd.DataFrame) -> pd.DataFrame:
+    """
+    Weekly bars from daily bars. The top rung of the magnitude ladder.
+
+    Weeks are Monday-Friday and are labelled by their MONDAY, so the index is
+    a real trading timestamp rather than a pandas period boundary (W-FRI starts
+    on a Saturday, which is not a thing).
+
+    bar_end is always Friday 16:00 of that week, computed from the label rather
+    than from the last daily bar present. That matters: on Wednesday the current
+    week only HAS three daily bars, and if bar_end were derived from them the
+    week would be marked closed while still absorbing Thursday and Friday --
+    the exact class of bug that corrupted v3's 4H bars.
+    """
+    if daily.empty:
+        return daily
+
+    df = daily.copy()
+    mondays = [ts.normalize() - pd.Timedelta(days=ts.weekday()) for ts in df.index]
+    df["_week"] = mondays
+
+    agg = df.groupby("_week").agg(
+        open=("open", "first"),
+        high=("high", "max"),
+        low=("low", "min"),
+        close=("close", "last"),
+        volume=("volume", "sum"),
+    )
+    agg.index.name = "timestamp"
+    agg = agg.sort_index()
+    agg["bar_end"] = [session_close(ts + pd.Timedelta(days=4)) for ts in agg.index]
+    return agg
+
+
 def is_closed(bar_end: pd.Timestamp, now_et: Optional[pd.Timestamp] = None) -> bool:
     """Has this bar's period actually finished in real time?"""
     now_et = now_et or pd.Timestamp.now(tz=ET)
@@ -328,10 +362,17 @@ class BarProvider:
             if len(resampled) >= MIN_BARS_REQUIRED:
                 out[label] = resampled
 
-        daily = self._request(symbol, TimeFrame(1, TimeFrameUnit.Day), 180)
+        daily = self._request(symbol, TimeFrame(1, TimeFrameUnit.Day), 400)
         if not daily.empty:
             daily = daily.copy()
             daily["bar_end"] = [session_close(ts) for ts in daily.index]
             out["1D"] = daily
+
+            # Weekly: the top rung of the magnitude ladder. Without it, a setup
+            # that has cleared every daily level looks like it has nowhere left
+            # to go, when in fact the week's prior high may be 4R above.
+            weekly = resample_weekly(daily)
+            if len(weekly) >= 3:
+                out["1W"] = weekly
 
         return out

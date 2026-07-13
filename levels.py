@@ -95,6 +95,12 @@ class ArmedLevel:
     continuity: str = "0/0"
     invalidated_by_opposite: bool = False
 
+    # The v5 gate verdict: ladder, continuity, nesting, score. Set by
+    # scanner.py via magnitude.evaluate(). A level whose decision did not pass
+    # is kept in the snapshot (so diagnose.py can show you WHY it was dropped)
+    # but is never sent.
+    decision: Optional[object] = None
+
     @property
     def key(self) -> str:
         """Stable identity across scans. The setup bar's timestamp is what
@@ -170,6 +176,7 @@ class ArmedLevel:
             "minutes_to_next_15m": self.minutes_to_next_15m,
             "continuity": self.continuity,
             "invalidated_by_opposite": self.invalidated_by_opposite,
+            "decision": self.decision.to_dict() if self.decision is not None else None,
         }
 
 
@@ -402,20 +409,38 @@ def minutes_until_next_15m_close(now_et: pd.Timestamp) -> int:
 
 def evaluate_tiers(
     level: ArmedLevel,
-    df5: pd.DataFrame,
     df15: pd.DataFrame,
     now_et: pd.Timestamp,
 ) -> ArmedLevel:
-    """Promote ARMED -> TIER1 -> TIER2 based on confirming closes."""
-    t1 = _first_confirming_close(df5, level, now_et)
-    if t1 is not None:
-        level.tier = TIER1
-        level.tier1_time = t1
+    """
+    Promote ARMED -> TIER1 -> TIER2. The 5-minute close is GONE.
 
-        t2 = _first_confirming_close(df15, level, now_et)
-        if t2 is not None:
-            level.tier = TIER2
-            level.tier2_time = t2
+    v4 promoted to Tier 1 on a 5m close through the level. That is the single
+    biggest generator of nuisance alerts in the system: a 5m close through a
+    4H level, with no 15m confirmation, resolves back inside the level often
+    enough that acting on it is a coin flip with commissions.
+
+    The v5 tiers:
+
+        TIER1  price is CURRENTLY through the level, intrabar, 15m not yet
+               closed. This is a HEADS-UP, not an entry. It carries
+               minutes_to_next_15m so you know how long your decision window is.
+
+        TIER2  a 15-minute bar has CLOSED through the level. This is the entry.
+               Nothing else is.
+
+    Tier 1 is now derived from live price rather than from a closed 5m bar,
+    which means it is also strictly more current: it fires the moment price is
+    through, not up to five minutes later.
+    """
+    t2 = _first_confirming_close(df15, level, now_et)
+    if t2 is not None:
+        level.tier = TIER2
+        level.tier2_time = t2
+        level.tier1_time = level.tier1_time or t2
+    elif level.is_through:
+        level.tier = TIER1
+        level.tier1_time = now_et
 
     level.minutes_to_next_15m = minutes_until_next_15m_close(now_et)
     return level
