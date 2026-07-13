@@ -1,0 +1,48 @@
+name: Pre-open Brief
+
+# Fire this ONCE per trading day, around 09:00 ET (13:00 UTC in EDT,
+# 14:00 UTC in EST). Trigger it from cron-job.org the same way as the main
+# scanner -- GitHub's native cron silently disables itself on quiet repos.
+#
+# cron-job.org schedule:  09:00 America/New_York, Mon-Fri
+# (cron-job.org handles DST for you if you set the timezone rather than UTC.)
+#
+# This sends ONE Telegram digest and stops. It is not a scanner and it does
+# not loop -- premarket price only tells you what the open is SET UP to do,
+# and that answer doesn't change enough between 8:00 and 9:29 to be worth
+# pinging you about repeatedly.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Print only, send nothing to Telegram"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read   # writes nothing back to the repo
+
+jobs:
+  brief:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - run: pip install -r requirements.txt
+
+      - name: Send pre-open brief
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          ALPACA_DATA_FEED: ${{ secrets.ALPACA_DATA_FEED }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          LOG_LEVEL: INFO
+        run: python premarket.py ${{ inputs.dry_run && '--dry-run' || '' }}
