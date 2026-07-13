@@ -90,24 +90,36 @@ class AlertManager:
         self.token = telegram_bot_token
         self.chat_ids = telegram_chat_id or []
 
-    async def send(self, message: str) -> None:
+    async def send(self, message: str) -> bool:
+        """Returns True only if every recipient got it.
+
+        The return value matters for --test-telegram: a 400 from Telegram's
+        Markdown parser (unbalanced * or _) fails ONE message while the rest
+        sail through, which is exactly the kind of bug that hides. The test
+        needs to know, not just log it and move on.
+        """
         if not self.token or not self.chat_ids:
             logger.info("No Telegram configured; would have sent:\n%s", message)
-            return
+            return False
         async with aiohttp.ClientSession() as session:
-            await asyncio.gather(
+            results = await asyncio.gather(
                 *(self._send_telegram(session, cid, message) for cid in self.chat_ids)
             )
+        return all(results)
 
-    async def _send_telegram(self, session: aiohttp.ClientSession, chat_id: str, message: str) -> None:
+    async def _send_telegram(self, session: aiohttp.ClientSession, chat_id: str, message: str) -> bool:
         url = f"https://api.telegram.org/bot{self.token}/sendMessage"
         payload = {"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}
         try:
             async with session.post(url, json=payload, timeout=15) as resp:
                 if resp.status >= 300:
-                    logger.error("Telegram %s -> %s: %s", chat_id, resp.status, await resp.text())
+                    body = await resp.text()
+                    logger.error("Telegram %s -> HTTP %s: %s", chat_id, resp.status, body)
+                    return False
+                return True
         except Exception:
             logger.exception("Telegram send failed for %s", chat_id)
+            return False
 
 
 # --------------------------------------------------------------------------
