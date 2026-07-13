@@ -84,30 +84,30 @@ section[data-testid="stSidebar"] * { color:var(--text) !important; }
 .thesis b { font-family:'IBM Plex Mono',monospace; font-weight:700; color:var(--text) !important; }
 
 /* ---- trade geometry bar ----
-   Laid out in real price order: STOP | trigger | TARGET, with segment widths
-   drawn to actual price distance. The ratio of the red block to the green
-   block IS the reward:risk. You see it instead of reading it. The dot is
-   where price actually is right now on that same axis. */
-.geo { position:relative; height:46px; margin:1.15rem 0 .3rem; }
-.geo .bar   { position:absolute; top:16px; left:0; right:0; height:14px;
-              border-radius:4px; overflow:hidden; display:flex; }
-.geo .risk  { background:rgba(255,107,98,.42); height:100%; }
-.geo .rew   { background:rgba(63,224,138,.38); height:100%; }
-.geo .trig  { position:absolute; top:9px; width:3px; height:28px;
-              background:var(--text); border-radius:2px; transform:translateX(-1px); z-index:3; }
-.geo .dot   { position:absolute; top:15px; width:16px; height:16px; border-radius:50%;
-              border:3px solid var(--bg); transform:translateX(-50%); z-index:4;
-              box-shadow:0 0 0 1px rgba(255,255,255,.25); }
-.geo .end   { position:absolute; top:34px; font-family:'IBM Plex Mono',monospace;
-              font-size:.7rem !important; font-weight:600; }
-.geo .end.l { left:0;  color:var(--bear) !important; }
-.geo .end.r { right:0; color:var(--bull) !important; }
-.geo .tlab  { position:absolute; top:-4px; font-family:'IBM Plex Mono',monospace;
-              font-size:.7rem !important; color:var(--text) !important; font-weight:700;
-              transform:translateX(-50%); white-space:nowrap; }
-.geo .plab  { position:absolute; top:34px; font-family:'IBM Plex Mono',monospace;
-              font-size:.7rem !important; color:var(--dim) !important;
-              transform:translateX(-50%); white-space:nowrap; }
+   Pure picture, no numbers: the numbers already live in the row below it and
+   printing them twice was what made this collide into mush on a phone.
+   Widths are drawn to real price distance, so the ratio of the red block to
+   the green block IS the reward:risk. Only two words appear, pinned to the
+   ends where they cannot overlap anything. */
+.geo { position:relative; height:38px; margin:1.1rem 0 .2rem; }
+.geo .bar  { position:absolute; top:4px; left:0; right:0; height:16px;
+             border-radius:4px; overflow:hidden; display:flex; }
+.geo .risk { background:rgba(255,107,98,.45); height:100%; }
+.geo .rew  { background:rgba(63,224,138,.42); height:100%; }
+.geo .trig { position:absolute; top:0; width:3px; height:24px; background:#fff;
+             border-radius:2px; transform:translateX(-1px); z-index:3; }
+.geo .dot  { position:absolute; top:2px; width:20px; height:20px; border-radius:50%;
+             border:3px solid var(--bg); transform:translateX(-50%); z-index:4; }
+.geo .cap  { position:absolute; top:24px; font-family:'IBM Plex Mono',monospace;
+             font-size:.66rem !important; font-weight:700; letter-spacing:.08em; }
+.geo .cap.l { left:0;  color:var(--bear) !important; }
+.geo .cap.r { right:0; color:var(--bull) !important; }
+
+.legend { display:flex; gap:1.4rem; align-items:center; flex-wrap:wrap;
+          margin:-.4rem 0 1.3rem; font-size:.75rem; color:var(--faint) !important;
+          font-family:'IBM Plex Mono',monospace; }
+.legend i { display:inline-block; width:11px; height:11px; border-radius:2px;
+            margin-right:.35rem; vertical-align:-1px; }
 
 .nums { display:flex; gap:2.2rem; margin-top:.9rem; flex-wrap:wrap; }
 .num .k{display:block !important;font-size:.66rem !important;text-transform:uppercase;
@@ -125,6 +125,24 @@ section[data-testid="stSidebar"] * { color:var(--text) !important; }
 .stale { background:rgba(255,192,67,.1); border:1px solid rgba(255,192,67,.35);
          border-radius:8px; padding:.8rem 1rem; margin-bottom:1.2rem;
          color:var(--amber) !important; font-size:.88rem; }
+/* ---- phone ----
+   This board gets read one-handed on a phone while the market is moving.
+   Tighten the gaps and shrink the display numerals so a whole card fits on
+   one screen without scrolling. */
+@media (max-width: 640px) {
+  [data-testid="stMarkdownContainer"] h1 { font-size:1.8rem; }
+  .strip { gap:1.5rem; padding:.8rem 0 1rem; margin-bottom:1.1rem; }
+  .stat .v { font-size:1.35rem !important; }
+  .stat .k { font-size:.62rem !important; letter-spacing:.09em; }
+  .legend { gap:.8rem; font-size:.68rem; margin-bottom:1rem; }
+  .card { padding:.95rem 1rem; }
+  .sym { font-size:1.25rem !important; }
+  .thesis { font-size:.9rem !important; }
+  .nums { gap:1.25rem; margin-top:.75rem; }
+  .num .v { font-size:1rem !important; }
+  .num .k { font-size:.6rem !important; }
+  .foot { font-size:.72rem !important; }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -169,6 +187,16 @@ st.markdown(f"""
   <span class="stat"><span class="k">Setup</span>
     <span class="v">{' / '.join(data.get('setup_timeframes', []))}</span></span>
   <span class="stat"><span class="k">Last scan</span><span class="v">{gen[-5:]}</span></span>
+</div>
+""", unsafe_allow_html=True)
+
+st.markdown("""
+<div class="legend">
+  <span><i style="background:rgba(255,107,98,.55)"></i>risk (stop → trigger)</span>
+  <span><i style="background:rgba(63,224,138,.5)"></i>reward (trigger → target)</span>
+  <span><i style="background:#fff;width:3px;border-radius:1px;"></i>trigger</span>
+  <span><i style="background:var(--slate);border-radius:50%"></i>price now</span>
+  <span>· bar widths are to scale, so red vs green <b>is</b> the R:R</span>
 </div>
 """, unsafe_allow_html=True)
 
@@ -267,11 +295,9 @@ for l in rows:
       <div class="rew"  style="width:{100 - t_pos}%"></div>
     </div>
     <div class="trig" style="left:{t_pos}%"></div>
-    <div class="tlab" style="left:{t_pos}%">TRIGGER {trig_p:.2f}</div>
     <div class="dot"  style="left:{p_pos}%;background:{dot_col};"></div>
-    <div class="plab" style="left:{p_pos}%">now {px:.2f}</div>
-    <div class="end l">STOP {stop_p:.2f}</div>
-    <div class="end r">TARGET {tgt_p:.2f}</div>
+    <div class="cap l">STOP</div>
+    <div class="cap r">TARGET</div>
   </div>"""
 
     stop_txt = f"{l['invalidation']:.2f}" if l.get("invalidation") is not None else "—"
