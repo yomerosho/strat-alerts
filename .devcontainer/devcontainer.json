@@ -1,0 +1,15 @@
+{
+  "name": "Strat Scanner",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "postCreateCommand": "pip install -r requirements.txt && cp -n env.example .env 2>/dev/null || true",
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-python.python"]
+    }
+  },
+  "remoteEnv": {
+    "ALPACA_API_KEY": "${localEnv:ALPACA_API_KEY}",
+    "ALPACA_SECRET_KEY": "${localEnv:ALPACA_SECRET_KEY}",
+    "ALPACA_DATA_FEED": "sip"
+  }
+}
