@@ -121,6 +121,14 @@ class Config:
     proximity_alert_pct: float = field(
         default_factory=lambda: float(os.getenv("PROXIMITY_ALERT_PCT") or "0.75")
     )
+    # Suppress alerts whose reward:risk (trigger->target vs trigger->stop) is
+    # below this. The Strat's magnitude convention can hand you a target that
+    # sits right on top of the trigger when the inside bar is nearly as wide
+    # as its parent -- geometrically a valid pattern, but not a trade.
+    # Set 0 to disable and see everything.
+    min_risk_reward: float = field(
+        default_factory=lambda: float(os.getenv("MIN_RISK_REWARD") or "1.0")
+    )
     scan_interval_seconds: int = field(
         default_factory=lambda: int(os.getenv("SCAN_INTERVAL_SECONDS") or "300")
     )

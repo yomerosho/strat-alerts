@@ -126,6 +126,13 @@ def _word(direction: str) -> str:
     return "BULLISH" if direction == "bull" else "BEARISH"
 
 
+def _rr(lv: ArmedLevel) -> str:
+    """R:R shown inline next to the target -- the number that separates a
+    pattern that's real from a trade that's worth taking."""
+    rr = lv.risk_reward
+    return f"  (R:R {rr:.1f})" if rr is not None else ""
+
+
 def format_arm_alert(lv: ArmedLevel) -> str:
     """
     👀 Level is armed and price is approaching. No confirmation yet.
@@ -145,7 +152,7 @@ def format_arm_alert(lv: ArmedLevel) -> str:
         lines.append(f"Invalid below: {lv.invalidation:.2f}" if lv.direction == "bull"
                      else f"Invalid above: {lv.invalidation:.2f}")
     if lv.target is not None:
-        lines.append(f"Target: {lv.target:.2f}")
+        lines.append(f"Target: {lv.target:.2f}{_rr(lv)}")
     lines.append(f"Continuity: {lv.continuity}")
     if lv.setup_bar_closes_at is not None:
         lines.append(f"{lv.setup_tf} bar closes: {_fmt_time(lv.setup_bar_closes_at)}")
@@ -184,7 +191,7 @@ def format_tier1_alert(lv: ArmedLevel, f2_actionable: bool) -> str:
     if lv.invalidation is not None:
         lines.append(f"Stop ref: {lv.invalidation:.2f}")
     if lv.target is not None:
-        lines.append(f"Target: {lv.target:.2f}")
+        lines.append(f"Target: {lv.target:.2f}{_rr(lv)}")
     lines.append(f"Continuity: {lv.continuity}")
     if lv.setup_bar_closes_at is not None:
         lines.append(f"{lv.setup_tf} bar closes: {_fmt_time(lv.setup_bar_closes_at)}")
@@ -218,7 +225,7 @@ def format_tier2_alert(lv: ArmedLevel) -> str:
     if lv.invalidation is not None:
         lines.append(f"Stop ref: {lv.invalidation:.2f}")
     if lv.target is not None:
-        lines.append(f"Target: {lv.target:.2f}")
+        lines.append(f"Target: {lv.target:.2f}{_rr(lv)}")
     lines.append(f"Continuity: {lv.continuity}")
     if lv.setup_bar_closes_at is not None:
         lines.append(f"{lv.setup_tf} bar closes: {_fmt_time(lv.setup_bar_closes_at)}")

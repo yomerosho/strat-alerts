@@ -97,12 +97,39 @@ check("2nd 4H bar ends at 16:00 (clamped, not 17:30)",
       b4.iloc[1]["bar_end"].strftime("%H:%M") == "16:00",
       b4.iloc[1]["bar_end"].strftime("%H:%M"))
 
-b2 = resample_session(rth, 120)
-check("2H buckets anchor 09:30/11:30/13:30/15:30",
-      [t.strftime("%H:%M") for t in b2.index] == ["09:30", "13:30", "15:30"],
-      str([t.strftime("%H:%M") for t in b2.index]))
-check("2H stub bar clamps to 16:00",
-      b2.iloc[-1]["bar_end"].strftime("%H:%M") == "16:00")
+# --- stub merging: the 2H 15:30 half-bar must not exist ---
+full = pd.date_range(f"{day} 09:30", f"{day} 15:55", freq="5min", tz=ET)
+fdf = pd.DataFrame({"open": 100.0, "high": 101.0, "low": 99.0, "close": 100.0, "volume": 10},
+                   index=full)
+fdf["bar_end"] = fdf.index + pd.Timedelta(minutes=5)
+
+b2 = resample_session(fdf, 120)
+spans2 = [(t.strftime("%H:%M"), int((r["bar_end"] - t).total_seconds() // 60))
+          for t, r in b2.iterrows()]
+check("2H has no 30-min stub bar at 15:30",
+      "15:30" not in [s[0] for s in spans2], str(spans2))
+check("2H final bar absorbed the stub (13:30 -> 16:00, 150 min)",
+      spans2[-1] == ("13:30", 150), str(spans2))
+check("no 2H bar is shorter than half its nominal length",
+      all(m >= 60 for _, m in spans2), str(spans2))
+
+b4f = resample_session(fdf, 240)
+spans4 = [(t.strftime("%H:%M"), int((r["bar_end"] - t).total_seconds() // 60))
+          for t, r in b4f.iterrows()]
+check("4H stub (2.5h) is NOT merged -- it's a real bar",
+      spans4 == [("09:30", 240), ("13:30", 150)], str(spans4))
+
+# Mid-session: at 11:00 the only 4H bucket present is 09:30. It must report
+# bar_end 13:30 (its real end), NOT 16:00 -- otherwise it never closes and
+# nothing ever arms.
+partial = pd.date_range(f"{day} 09:30", f"{day} 10:55", freq="5min", tz=ET)
+pdf = pd.DataFrame({"open": 100.0, "high": 101.0, "low": 99.0, "close": 100.0, "volume": 10},
+                   index=partial)
+pdf["bar_end"] = pdf.index + pd.Timedelta(minutes=5)
+p4 = resample_session(pdf, 240)
+check("mid-session 4H bar ends at 13:30, not 16:00",
+      p4.iloc[0]["bar_end"].strftime("%H:%M") == "13:30",
+      p4.iloc[0]["bar_end"].strftime("%H:%M"))
 
 
 # ==========================================================================

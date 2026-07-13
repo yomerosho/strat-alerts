@@ -76,6 +76,11 @@ LOOKBACK_DAYS: dict[str, int] = {
 
 MIN_BARS_REQUIRED = 5
 
+# A trailing session bucket shorter than this fraction of its nominal length
+# is folded into the bar before it. 0.5 keeps the 4H 13:30 bar (2.5h = 62%)
+# and eliminates the 2H 15:30 bar (0.5h = 25%).
+MIN_BAR_COMPLETENESS = 0.5
+
 
 # --------------------------------------------------------------------------
 # Session helpers
@@ -133,18 +138,43 @@ def bucket_end(start: pd.Timestamp, minutes: int) -> pd.Timestamp:
 # Resampling
 # --------------------------------------------------------------------------
 
-def resample_session(df5: pd.DataFrame, minutes: int) -> pd.DataFrame:
+def resample_session(df5: pd.DataFrame, minutes: int, merge_stub: bool = True) -> pd.DataFrame:
     """
     Aggregate RTH 5-minute bars into session-anchored buckets of `minutes`.
 
-    Returns a DataFrame indexed by bucket start (ET) with columns:
-        open, high, low, close, volume, bar_end
+    THE STUB PROBLEM
+    ----------------
+    RTH is 6.5 hours, which divides evenly into nothing useful. So the final
+    bucket of each session is short:
+
+        4H:  13:30-16:00  =  2.5h of a 4h bucket   (62% -- a real bar)
+        2H:  15:30-16:00  =  0.5h of a 2h bucket   (25% -- NOT a real bar)
+
+    A 30-minute candle has a 30-minute range. It is therefore almost always
+    strictly INSIDE the 2-hour bar before it -- which means it arms levels
+    constantly, off a range so tight the target sits practically on top of
+    the trigger. Observed live on QQQ: a "2H inside bar" that produced a
+    0.12 reward-to-risk. That's not a setup, it's an artifact of the clock.
+
+    So: if the trailing bucket is under `MIN_BAR_COMPLETENESS` of its nominal
+    length, fold it into the previous bucket of the same session.
+
+        2H final bar becomes 13:30-16:00 (2.5h). 4H is unaffected.
+
+    NOTE FOR CHART COMPARISON: TradingView WILL show that separate 15:30
+    half-candle on a 2H chart. The scanner deliberately does not. Every other
+    bar matches exactly -- only the last 2H bar of the session differs, and it
+    differs on purpose. Don't be alarmed when you're eyeballing the two.
     """
     if df5.empty:
         return df5
 
     df = df5.copy()
     df["bucket"] = [bucket_start(ts, minutes) for ts in df.index]
+
+    absorbed: set = set()
+    if merge_stub:
+        df["bucket"], absorbed = _merge_trailing_stubs(df["bucket"], minutes)
 
     agg = df.groupby("bucket").agg(
         open=("open", "first"),
@@ -154,8 +184,61 @@ def resample_session(df5: pd.DataFrame, minutes: int) -> pd.DataFrame:
         volume=("volume", "sum"),
     )
     agg.index.name = "timestamp"
-    agg["bar_end"] = [bucket_end(ts, minutes) for ts in agg.index]
-    return agg.sort_index()
+    agg = agg.sort_index()
+    agg["bar_end"] = _bar_ends(agg.index, minutes, absorbed)
+    return agg
+
+
+def _bar_ends(starts, minutes: int, absorbed: set) -> list[pd.Timestamp]:
+    """
+    When each bucket actually closes.
+
+    Normally: start + minutes, clamped to the session close.
+
+    But a bucket that ABSORBED a trailing stub genuinely runs to 16:00, and
+    must say so. If it reported its nominal end instead, it would be marked
+    "closed" at 15:30 while still swallowing 15:30-16:00 bars -- the scanner
+    would arm off a bar that was still changing underneath it.
+
+    The absorbed set is passed in rather than inferred from "is this the last
+    bucket of the session", because mid-session the last bucket present in
+    the data is simply the one in progress -- at 11:00 the 09:30 4H bar is
+    the only bucket that exists, and it ends at 13:30, not at the close.
+    """
+    ends = []
+    for ts in starts:
+        if ts in absorbed:
+            ends.append(session_close(ts))
+        else:
+            ends.append(min(ts + pd.Timedelta(minutes=minutes), session_close(ts)))
+    return ends
+
+
+def _merge_trailing_stubs(buckets: pd.Series, minutes: int) -> tuple[pd.Series, set]:
+    """
+    Reassign any too-short final bucket of a session to the bucket before it.
+
+    Returns (remapped_labels, set_of_buckets_that_absorbed_a_stub).
+
+    Works on the bucket-label column directly: relabel the stub's rows with
+    the previous bucket's start, and the groupby that follows merges them for
+    free.
+    """
+    remapped = buckets.copy()
+    absorbed: set = set()
+
+    for _, day_buckets in buckets.groupby(buckets.dt.date):
+        starts = sorted(day_buckets.unique())
+        if len(starts) < 2:
+            continue
+
+        last = starts[-1]
+        span_minutes = (bucket_end(last, minutes) - last).total_seconds() / 60
+        if span_minutes < minutes * MIN_BAR_COMPLETENESS:
+            remapped[remapped == last] = starts[-2]
+            absorbed.add(starts[-2])
+
+    return remapped, absorbed
 
 
 def is_closed(bar_end: pd.Timestamp, now_et: Optional[pd.Timestamp] = None) -> bool:

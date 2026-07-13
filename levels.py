@@ -120,6 +120,32 @@ class ArmedLevel:
     def is_through(self) -> bool:
         return self.distance_pct > 0
 
+    @property
+    def risk_reward(self) -> Optional[float]:
+        """
+        Reward-to-risk, measured from the TRIGGER (not from current price).
+
+        Risk  = trigger -> invalidation (the other edge of the setup)
+        Reward = trigger -> target
+
+        This is worth computing because the Strat's own magnitude convention
+        (target = the opposing extreme of the bar before the inside bar) can
+        produce a target that sits almost on top of the trigger, whenever the
+        inside bar is nearly as wide as the bar containing it. Seen live: a
+        QQQ setup with 0.92 of risk and 0.21 of reward. Geometrically valid,
+        completely unplayable.
+
+        The pattern being "real" doesn't make the trade worth taking. This is
+        the number that tells them apart.
+        """
+        if self.target is None or self.invalidation is None:
+            return None
+        risk = abs(self.level - self.invalidation)
+        reward = abs(self.target - self.level)
+        if risk <= 0:
+            return None
+        return reward / risk
+
     def to_dict(self) -> dict:
         return {
             "symbol": self.symbol,
@@ -131,6 +157,7 @@ class ArmedLevel:
             "level": round(self.level, 2),
             "invalidation": round(self.invalidation, 2) if self.invalidation else None,
             "target": round(self.target, 2) if self.target else None,
+            "risk_reward": round(self.risk_reward, 2) if self.risk_reward is not None else None,
             "current_price": round(self.current_price, 2),
             "distance_pct": round(self.distance_pct, 3),
             "tier": self.tier,

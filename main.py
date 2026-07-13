@@ -53,6 +53,17 @@ def continuity_ok(lv: ArmedLevel, tier: str) -> bool:
     return agree >= threshold
 
 
+def risk_reward_ok(lv: ArmedLevel) -> bool:
+    """A pattern can be textbook-correct and still not be a trade. If the
+    target sits on top of the trigger, don't ring the phone."""
+    if CONFIG.min_risk_reward <= 0:
+        return True
+    rr = lv.risk_reward
+    if rr is None:
+        return True  # no target computed -- let it through, judge it yourself
+    return rr >= CONFIG.min_risk_reward
+
+
 def tiers_to_announce(lv: ArmedLevel) -> list[str]:
     """
     Which alerts does this level currently warrant?
@@ -102,6 +113,13 @@ async def process_symbol(
         return [], {}
 
     for lv in armed:
+        if not risk_reward_ok(lv):
+            logger.info(
+                "%s %s %s %s: R:R %.2f below %.2f; not alerting",
+                symbol, lv.setup_tf, lv.pattern, lv.direction,
+                lv.risk_reward or 0, CONFIG.min_risk_reward,
+            )
+            continue
         for tier in tiers_to_announce(lv):
             if not continuity_ok(lv, tier):
                 logger.info(
@@ -165,14 +183,17 @@ def print_board(levels: list[dict]) -> None:
         print("  (nothing armed)")
         return
     print(f"{'SYM':<6} {'TF':<4} {'PATTERN':<8} {'DIR':<5} {'TIER':<6} "
-          f"{'LEVEL':>9} {'PRICE':>9} {'DIST%':>8}  CONT")
+          f"{'LEVEL':>9} {'PRICE':>9} {'DIST%':>8} {'R:R':>6}  CONT")
     print("-" * 78)
     for d in levels:
+        rr = d.get("risk_reward")
+        rr_txt = f"{rr:>6.2f}" if rr is not None else "     -"
+        flag = "  <-- R:R too low" if (rr is not None and rr < CONFIG.min_risk_reward > 0) else ""
         print(
             f"{d['symbol']:<6} {d['setup_tf']:<4} {d['pattern']:<8} "
             f"{d['direction']:<5} {d['tier']:<6} "
             f"{d['level']:>9.2f} {d['current_price']:>9.2f} "
-            f"{d['distance_pct']:>+8.2f}  {d['continuity']}"
+            f"{d['distance_pct']:>+8.2f} {rr_txt}  {d['continuity']}{flag}"
         )
 
 
@@ -186,6 +207,7 @@ def write_snapshot(tickers: list[str], levels: list[dict], snapshots: list[dict]
         "tier1_timeframe": CONFIG.tier1_timeframe,
         "tier2_timeframe": CONFIG.tier2_timeframe,
         "proximity_alert_pct": CONFIG.proximity_alert_pct,
+        "min_risk_reward": CONFIG.min_risk_reward,
         "armed_levels": levels,
         "symbols": snapshots,
     }
