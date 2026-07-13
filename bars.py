@@ -311,6 +311,18 @@ class BarProvider:
         base["bar_end"] = base.index + pd.Timedelta(minutes=5)
         out["5Min"] = base
 
+        # The LAST TRADED PRICE, extended hours included.
+        #
+        # Bars are RTH-only and must stay that way -- letting premarket tape into
+        # the buckets is exactly what corrupted v3's higher timeframes. But
+        # "where is price right now" is a different question from "what shape is
+        # the candle", and conflating them made premarket ARM alerts quote
+        # Friday's 4pm close as though it were live. The levels were right and
+        # the distances were fiction.
+        #
+        # So: candles from RTH, current price from the full tape.
+        out["_last"] = raw5.tail(1)
+
         for label, minutes in SESSION_TIMEFRAMES.items():
             resampled = resample_session(df5, minutes)
             if len(resampled) >= MIN_BARS_REQUIRED:

@@ -56,6 +56,8 @@ class StratScanner:
         forming_by_tf: dict[str, Optional[pd.Series]] = {}
 
         for tf, df in frames.items():
+            if tf.startswith("_"):
+                continue
             lab = label_bars(df)
             labeled[tf] = lab
             closed, forming = split_closed_forming(lab, now_et)
@@ -63,7 +65,14 @@ class StratScanner:
             forming_by_tf[tf] = forming
 
         df5 = labeled["5Min"]
-        current_price = float(df5["close"].iloc[-1])
+
+        # Price from the full tape (extended hours included); candles from RTH.
+        # Premarket this is the live print instead of Friday's close.
+        last = frames.get("_last")
+        if last is not None and not last.empty:
+            current_price = float(last["close"].iloc[-1])
+        else:
+            current_price = float(df5["close"].iloc[-1])
 
         # --- Arm setups on 2H / 4H only ---
         armed: list[ArmedLevel] = []
