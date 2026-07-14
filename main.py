@@ -279,7 +279,7 @@ async def test_telegram(mode: str) -> None:
     failed: list[str] = []
 
     await alerts.send(
-        "🧪 *Strat Scanner v4 — alert test*\n"
+        "🧪 *Strat Scanner v5 — alert test*\n"
         f"Mode: `{mode}`. The next few messages are tests, not signals."
     )
 
@@ -340,7 +340,7 @@ async def test_telegram(mode: str) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Strat Scanner v4 — armed levels")
+    p = argparse.ArgumentParser(description="Strat Scanner v5 — armed levels")
     p.add_argument("--once", action="store_true", help="Single scan cycle, then exit")
     p.add_argument("--dry-run", action="store_true", help="Scan and print; send nothing")
     p.add_argument("--add-ticker", metavar="SYM")

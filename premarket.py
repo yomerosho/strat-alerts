@@ -6,38 +6,31 @@ The pre-open brief. Run this between roughly 08:00 and 09:29 ET.
 WHAT THIS IS NOT
 ================
 It is not a premarket F2 scanner. An F2 cannot exist before the bell, and it
-would be dishonest to pretend otherwise.
-
-An F2 arms off the FORMING setup bar: price has to poke through the prior 4H
-bar's high, then fail back below it. Before 09:30 there is no forming 4H bar.
-There is nothing to poke through. Any tool claiming to show you "a premarket
-Failed-2" is showing you a fiction.
+would be dishonest to pretend otherwise. An F2 arms off the FORMING setup bar:
+price pokes through the prior bar's extreme, then fails back. Before 09:30 there
+is no forming 4H (or Daily) bar. There is nothing to poke through.
 
 WHAT IT ACTUALLY IS
 ===================
-It tells you which F2 is SET UP to happen at the open, and where.
+It tells you which F2 is SET UP to happen at the open, and where -- on BOTH the
+4H and the Daily -- annotated with the timeframe stack coming into the session
+so you know whether the set-up is with-trend or fighting it.
 
-The prior 4H bar's high and low are fixed and known before the bell -- they
-were set yesterday afternoon. Premarket price relative to those two numbers
-determines what the 09:30 bar opens as:
+The prior 4H and Daily highs/lows are fixed and known before the bell. Premarket
+price relative to those levels determines what the 09:30 bar opens as:
 
-    premarket ABOVE prior 4H high   -> the new bar opens as a 2U attempt.
-                                       If it fails back below that high, that
-                                       is an F2D, and you already know the
-                                       exact trigger price.
+    premarket ABOVE the prior high  -> opens as a 2U attempt; fail back = F2D.
+    premarket BELOW the prior low   -> opens as a 2D attempt; reclaim = F2U.
+    premarket INSIDE the range      -> opens as a 1; watch the edges.
 
-    premarket BELOW prior 4H low    -> opens as a 2D attempt.
-                                       Failure back above = F2U.
+Plus: any inside bar that closed yesterday (4H or Daily) is armed from the first
+tick, and the FTFC stack (1H/2H/4H/1D/1W, as it closed) tells you whether the
+setup runs with the trend or against it -- the difference between the AAPL long
+you take and the countertrend short you skip.
 
-    premarket INSIDE the prior range-> opens as a 1. Nothing to trap anyone
-                                       with. Watch the edges.
-
-Plus: any inside bar that closed on the 4H yesterday is still armed this
-morning. Those levels carry over and are live from the first tick.
-
-Premarket bars are used ONLY to read current price. They are never fed into
-the 4H candles -- letting extended-hours tape into the buckets is precisely
-the bug that made v3's higher-timeframe signals worthless.
+Premarket bars are used ONLY to read current price. They are NEVER fed into the
+candles -- letting extended-hours tape into the buckets is precisely the bug
+that made v3's higher-timeframe signals worthless.
 """
 
 from __future__ import annotations
@@ -47,173 +40,230 @@ import logging
 from typing import Optional
 
 import pandas as pd
-from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
 
+import magnitude
 from alerting import AlertManager
-from bars import ET, BarProvider, filter_rth, resample_session
+from bars import ET, BarProvider
 from config import CONFIG, load_tickers
 from levels import split_closed_forming
 from strat import label_bars
 
 logger = logging.getLogger("strat_scanner.premarket")
 
-PREMARKET_OPEN = "04:00"
-PREMARKET_END = "09:29"
+# The stack we read for bias, coming into the open (matches the scanner's FTFC).
+FTFC_TFS: tuple[str, ...] = ("1H", "2H", "4H", "1D", "1W")
+# Timeframes whose prior extremes we surface as overnight magnets.
+MAGNET_TFS: tuple[str, ...] = ("4H", "1D", "1W")
 
 
-def premarket_price(raw5: pd.DataFrame, session_date) -> Optional[float]:
-    """Last traded price in today's premarket window (04:00-09:29 ET)."""
-    today = raw5[[t.date() == session_date for t in raw5.index]]
-    if today.empty:
-        return None
-    pre = today.between_time(PREMARKET_OPEN, PREMARKET_END)
-    if pre.empty:
-        return None
-    return float(pre["close"].iloc[-1])
+# --------------------------------------------------------------------------
+# state
+# --------------------------------------------------------------------------
+
+def _state(frames: dict, now: pd.Timestamp):
+    """(closed_by_tf, forming_by_tf) for every real frame, labelled."""
+    closed_by_tf: dict[str, pd.DataFrame] = {}
+    forming_by_tf: dict[str, Optional[pd.Series]] = {}
+    for tf, df in frames.items():
+        if tf.startswith("_"):
+            continue
+        lab = label_bars(df)
+        c, f = split_closed_forming(lab, now)
+        closed_by_tf[tf] = c
+        forming_by_tf[tf] = f
+    return closed_by_tf, forming_by_tf
+
+
+def _tf_map(prior: pd.Series, ref: float) -> dict:
+    """What the next bar of this timeframe opens as, and which F2 that sets up."""
+    hi, lo = float(prior["high"]), float(prior["low"])
+    lab = prior["label"] if isinstance(prior["label"], str) else "?"
+    if ref > hi:
+        return dict(high=hi, low=lo, label=lab, opens_as="2U",
+                    f2="F2D", trigger=hi, inside=lab == "1")
+    if ref < lo:
+        return dict(high=hi, low=lo, label=lab, opens_as="2D",
+                    f2="F2U", trigger=lo, inside=lab == "1")
+    return dict(high=hi, low=lo, label=lab, opens_as="1",
+                f2=None, trigger=None, inside=lab == "1")
+
+
+def _stack_bias(closed_by_tf: dict) -> tuple[int, int]:
+    """How many of the FTFC frames CLOSED bullish (green). The bias into the
+    open -- there is no forming intraday bar premarket, so we read the last
+    completed bar of each frame."""
+    bull = total = 0
+    for tf in FTFC_TFS:
+        c = closed_by_tf.get(tf)
+        if c is None or c.empty:
+            continue
+        total += 1
+        last = c.iloc[-1]
+        if float(last["close"]) > float(last["open"]):
+            bull += 1
+    return bull, total
+
+
+def _trend_note(f2: Optional[str], bull: int, total: int) -> str:
+    """Does the stack support the set-up F2 direction? F2U is bullish, F2D
+    bearish."""
+    if f2 is None or total == 0:
+        return ""
+    agree = bull if f2 == "F2U" else (total - bull)
+    if agree >= 4:
+        return "with-trend ✓"
+    if agree <= 1:
+        return "⚠ counter-trend"
+    return "mixed stack"
 
 
 def brief_symbol(provider: BarProvider, symbol: str, now: pd.Timestamp) -> Optional[dict]:
-    raw5 = provider._request(symbol, TimeFrame(5, TimeFrameUnit.Minute), 12)
-    if raw5.empty:
+    frames = provider.fetch(symbol)
+    if not frames or "4H" not in frames or "1D" not in frames or "5Min" not in frames:
         return None
 
-    rth = filter_rth(raw5)
-    if rth.empty:
+    closed_by_tf, _ = _state(frames, now)
+    c4 = closed_by_tf.get("4H")
+    cD = closed_by_tf.get("1D")
+    c5 = closed_by_tf.get("5Min")
+    if c4 is None or len(c4) < 2 or cD is None or len(cD) < 2 or c5 is None or c5.empty:
         return None
 
-    bars4 = label_bars(resample_session(rth, 240))
-    closed, _ = split_closed_forming(bars4, now)
-    if len(closed) < 2:
-        return None
-
-    prior = closed.iloc[-1]          # yesterday's final 4H bar
-    prior_high = float(prior["high"])
-    prior_low = float(prior["low"])
-    prior_label = prior["label"] if isinstance(prior["label"], str) else "?"
-
-    px = premarket_price(raw5, now.date())
-    rth_close = float(rth["close"].iloc[-1])   # yesterday's 16:00 print
-
-    out = {
-        "symbol": symbol,
-        "prior_high": prior_high,
-        "prior_low": prior_low,
-        "prior_label": prior_label,
-        "prior_bar_time": prior.name,
-        "rth_close": rth_close,
-        "premarket": px,
-        "has_premarket": px is not None,
-        "gap_pct": ((px - rth_close) / rth_close * 100) if px else 0.0,
-    }
-
+    # Price now (full tape, incl. premarket) vs the last RTH close.
+    last = frames.get("_last")
+    px = float(last["close"].iloc[-1]) if (last is not None and not last.empty) else None
+    rth_close = float(c5["close"].iloc[-1])
+    has_pre = px is not None and last is not None and last.index[-1] > c5.index[-1]
     ref = px if px is not None else rth_close
 
-    # --- what does the 09:30 bar open as, and what F2 does that set up? ---
-    if ref > prior_high:
-        out["opens_as"] = "2U"
-        out["f2_watch"] = "F2D"
-        out["f2_trigger"] = prior_high
-        out["f2_note"] = (
-            f"Opening above the prior 4H high. If price fails back below "
-            f"{prior_high:.2f}, breakout buyers are trapped -> F2D."
-        )
-    elif ref < prior_low:
-        out["opens_as"] = "2D"
-        out["f2_watch"] = "F2U"
-        out["f2_trigger"] = prior_low
-        out["f2_note"] = (
-            f"Opening below the prior 4H low. If price reclaims "
-            f"{prior_low:.2f}, breakdown sellers are trapped -> F2U."
-        )
-    else:
-        out["opens_as"] = "1"
-        out["f2_watch"] = None
-        out["f2_trigger"] = None
-        out["f2_note"] = (
-            f"Inside the prior 4H range ({prior_low:.2f}-{prior_high:.2f}). "
-            f"No one is trapped yet. A break of either edge is the first move."
-        )
+    m4 = _tf_map(c4.iloc[-1], ref)   # 4H map
+    mD = _tf_map(cD.iloc[-1], ref)   # Daily map
 
-    # --- inside bar carried over from yesterday: armed from the first tick ---
-    out["carried_inside_bar"] = prior_label == "1"
+    bull, total = _stack_bias(closed_by_tf)
 
-    return out
+    # Overnight magnets: untouched higher-TF prior extremes beyond price.
+    up_mag, dn_mag = [], []
+    for tf in MAGNET_TFS:
+        c = closed_by_tf.get(tf)
+        if c is None or c.empty:
+            continue
+        ph, pl = float(c.iloc[-1]["high"]), float(c.iloc[-1]["low"])
+        if ph > ref:
+            up_mag.append((tf, ph))
+        if pl < ref:
+            dn_mag.append((tf, pl))
+    up_mag.sort(key=lambda x: x[1])          # nearest above first
+    dn_mag.sort(key=lambda x: -x[1])         # nearest below first
+
+    return {
+        "symbol": symbol,
+        "premarket": px,
+        "has_premarket": has_pre,
+        "rth_close": rth_close,
+        "gap_pct": ((px - rth_close) / rth_close * 100) if px else 0.0,
+        "m4": m4,
+        "mD": mD,
+        "ftfc_bull": bull,
+        "ftfc_total": total,
+        "up_mag": up_mag,
+        "dn_mag": dn_mag,
+    }
+
+
+# --------------------------------------------------------------------------
+# formatting
+# --------------------------------------------------------------------------
+
+def _stack_str(bull: int, total: int) -> str:
+    if total == 0:
+        return "stack `?`"
+    if bull >= total - bull:
+        return f"stack `{bull}/{total} bull`"
+    return f"stack `{total - bull}/{total} bear`"
+
+
+def _tf_line(tag: str, m: dict, bull: int, total: int) -> Optional[str]:
+    """One line for a 4H or Daily map, or None if it's just sitting inside."""
+    if m["f2"]:
+        note = _trend_note(m["f2"], bull, total)
+        note = f"  {note}" if note else ""
+        fail = "fail back below" if m["f2"] == "F2D" else "reclaim"
+        dbl = "  (also the breakout trigger)" if m["inside"] else ""
+        return (f"    {tag} opens `{m['opens_as']}` · *{m['f2']}* at "
+                f"`{m['trigger']:.2f}` ({fail}){dbl}{note}")
+    if m["inside"]:
+        return (f"    {tag} inside bar armed · bull above `{m['high']:.2f}` · "
+                f"bear below `{m['low']:.2f}`")
+    return None
 
 
 def format_brief(rows: list[dict], now: pd.Timestamp) -> str:
-    """
-    One entry per symbol, not one per phenomenon.
-
-    The subtlety worth surfacing: when yesterday's final 4H bar is an INSIDE
-    bar and premarket has gapped above it, the breakout trigger and the F2
-    trigger are THE SAME PRICE. That isn't a duplicate -- it's the single most
-    useful fact on the page. One level, two opposite resolutions:
-
-        close above it and hold  -> the 2-1-2 breakout is on
-        poke above and fail back -> everyone who bought the gap is trapped, F2D
-
-    Printing those as two separate list items with identical numbers looks
-    like a bug and buries the point. So each symbol gets one block that says
-    what the level is and both ways it can go.
-    """
     lines = [
         f"🌅 *Pre-open brief* — {now:%a %d %b}, {now:%H:%M} ET",
         "",
-        "_What the 09:30 4H bar opens as, and which F2 that sets up._",
-        "_An F2 can't exist before the bell — this is the map, not the signal._",
+        "_What the 09:30 4H & Daily bars open as, which F2 that sets up, and_",
+        "_whether the timeframe stack backs it. An F2 can't exist before the bell —_",
+        "_this is the map, not the signal._",
         "",
     ]
 
-    live = [r for r in rows if r["f2_watch"] or r["carried_inside_bar"]]
-    quiet = [r for r in rows if not r["f2_watch"] and not r["carried_inside_bar"]]
+    def is_live(r):
+        return r["m4"]["f2"] or r["mD"]["f2"] or r["m4"]["inside"] or r["mD"]["inside"]
 
-    live.sort(key=lambda r: (r["f2_watch"] is None, -abs(r["gap_pct"])))
+    live = [r for r in rows if is_live(r)]
+    quiet = [r for r in rows if not is_live(r)]
+
+    # With-trend F2s first, then bigger gaps.
+    def sort_key(r):
+        best = ""
+        for m in (r["mD"], r["m4"]):        # Daily weighted first
+            n = _trend_note(m["f2"], r["ftfc_bull"], r["ftfc_total"])
+            if "with-trend" in n:
+                best = "0"
+            elif best == "" and n:
+                best = "1"
+        return (best or "2", -abs(r["gap_pct"]))
+    live.sort(key=sort_key)
 
     for r in live:
-        px = r["premarket"] or r["rth_close"]
+        px = r["premarket"] if r["premarket"] is not None else r["rth_close"]
         no_tape = "" if r["has_premarket"] else "  _(no premkt tape — yday close)_"
-        hi, lo = r["prior_high"], r["prior_low"]
-
-        if r["f2_watch"]:
-            arrow = "🔴" if r["f2_watch"] == "F2D" else "🟢"
-            trig = r["f2_trigger"]
-            lines.append(
-                f"{arrow} *{r['symbol']}* — opens `{r['opens_as']}`  "
-                f"premkt `{px:.2f}` ({r['gap_pct']:+.2f}%){no_tape}"
-            )
-            if r["carried_inside_bar"]:
-                # Same price, two opposite outcomes. This is the whole point.
-                hold = "above" if r["f2_watch"] == "F2D" else "below"
-                fail = "back below" if r["f2_watch"] == "F2D" else "back above"
-                lines.append(
-                    f"    ⚡ *`{trig:.2f}` is a double-edged level* (4H inside bar):\n"
-                    f"       · 15m closes {hold} it and holds → breakout is on\n"
-                    f"       · pokes through, then closes {fail} → *{r['f2_watch']}*, "
-                    f"gap buyers trapped"
-                )
-            else:
-                lines.append(f"    F2 trigger `{trig:.2f}` → watch *{r['f2_watch']}*")
-        else:
-            lines.append(
-                f"🎯 *{r['symbol']}* — 4H inside bar, armed from the first tick  "
-                f"premkt `{px:.2f}` ({r['gap_pct']:+.2f}%){no_tape}"
-            )
-            lines.append(f"    bull above `{hi:.2f}` · bear below `{lo:.2f}`")
+        gap = r["ftfc_bull"] >= (r["ftfc_total"] - r["ftfc_bull"])
+        head_arrow = "🟢" if gap else "🔴"
+        lines.append(
+            f"{head_arrow} *{r['symbol']}* — premkt `{px:.2f}` "
+            f"({r['gap_pct']:+.2f}%) · {_stack_str(r['ftfc_bull'], r['ftfc_total'])}{no_tape}"
+        )
+        for tag, m in (("1D", r["mD"]), ("4H", r["m4"])):
+            ln = _tf_line(tag, m, r["ftfc_bull"], r["ftfc_total"])
+            if ln:
+                lines.append(ln)
+        # magnets in the direction(s) that have a set-up
+        mag_bits = []
+        if r["dn_mag"]:
+            mag_bits.append("↓ " + " · ".join(f"{tf} `{p:.2f}`" for tf, p in r["dn_mag"][:3]))
+        if r["up_mag"]:
+            mag_bits.append("↑ " + " · ".join(f"{tf} `{p:.2f}`" for tf, p in r["up_mag"][:3]))
+        if mag_bits:
+            lines.append("    magnets: " + "   ".join(mag_bits))
         lines.append("")
 
     if quiet:
-        lines.append(f"_Sitting inside their prior 4H range, nothing set up: "
-                     f"{', '.join(r['symbol'] for r in quiet)}_")
+        lines.append("_Inside their prior 4H & Daily ranges, nothing set up: "
+                     + ", ".join(r["symbol"] for r in quiet) + "_")
         lines.append("")
 
     if not live:
-        lines.append("_Nothing set up at the open. Everything is inside its "
-                     "prior 4H range._")
+        lines.append("_Nothing set up at the open. Everything is inside its prior ranges._")
         lines.append("")
 
-    lines.append("_Levels are RTH 4H bars. Premarket tape is NOT in the candles._")
+    lines.append("_Levels are RTH 4H/Daily bars. Premarket tape is NOT in the candles._")
     return "\n".join(lines)
 
+
+# --------------------------------------------------------------------------
+# orchestration
+# --------------------------------------------------------------------------
 
 async def run_brief(dry_run: bool = False) -> None:
     now = pd.Timestamp.now(tz=ET)
