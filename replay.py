@@ -295,8 +295,9 @@ def replay_symbol(
     provider: BarProvider,
     symbol: str,
     apply_gates: bool = True,
+    lookback_days: Optional[int] = None,
 ) -> list[Signal]:
-    frames = provider.fetch(symbol)
+    frames = provider.fetch(symbol, lookback_days=lookback_days)
     if not frames or "15Min" not in frames:
         logger.warning("%s: insufficient data", symbol)
         return []
@@ -374,12 +375,46 @@ def summarize(sigs: list[Signal]) -> str:
     return "\n".join(lines)
 
 
+def by_quarter(sigs: list[Signal]) -> str:
+    """
+    Win rate / expectancy broken out by calendar quarter.
+
+    A blended 12-month number can hide a strategy that made all its money in
+    one trending quarter and bled the other three. This is the check that
+    matters for out-of-sample: does the edge SURVIVE across regimes, or was it
+    one lucky run? A row that collapses is the honest warning.
+    """
+    from collections import defaultdict
+    groups: dict[str, list[Signal]] = defaultdict(list)
+    for s in sigs:
+        q = f"{s.triggered_at[:4]}-Q{(int(s.triggered_at[5:7]) - 1) // 3 + 1}"
+        groups[q].append(s)
+
+    lines = [f"{'quarter':<9}{'n':>5}{'win%':>8}{'exp_R':>8}{'total_R':>9}"]
+    lines.append("-" * 39)
+    for q in sorted(groups):
+        g = groups[q]
+        decided = [s for s in g if s.outcome in ("WIN", "LOSS")]
+        wins = [s for s in decided if s.outcome == "WIN"]
+        booked = [s for s in g if s.outcome in ("WIN", "LOSS", "SCRATCH")]
+        wr = 100 * len(wins) / len(decided) if decided else 0.0
+        exp = sum(s.r_realized for s in booked) / len(booked) if booked else 0.0
+        lines.append(f"{q:<9}{len(g):>5}{wr:>7.1f}%{exp:>+8.2f}"
+                     f"{sum(s.r_realized for s in booked):>+9.1f}")
+    return "\n".join(lines)
+
+
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     ap = argparse.ArgumentParser()
     ap.add_argument("symbols", nargs="+")
     ap.add_argument("--out", default="signals.csv")
+    ap.add_argument(
+        "--days", type=int, default=None,
+        help="5-minute history to pull (default ~60). Use 365 to validate a "
+             "full year out-of-sample. Daily/weekly rungs already span 400d.",
+    )
     ap.add_argument(
         "--no-gates", action="store_true",
         help="replay WITHOUT the v5 gates -- roughly what v4 would have sent. "
@@ -396,7 +431,8 @@ def main() -> int:
 
     all_sigs: list[Signal] = []
     for sym in args.symbols:
-        sigs = replay_symbol(provider, sym, apply_gates=not args.no_gates)
+        sigs = replay_symbol(provider, sym, apply_gates=not args.no_gates,
+                             lookback_days=args.days)
         logger.info("%-6s %d signals", sym, len(sigs))
         all_sigs.extend(sigs)
 
@@ -414,6 +450,8 @@ def main() -> int:
               "outcome", "r_realized", "mfe_r"]].to_string(index=False))
     print()
     print(summarize(all_sigs))
+    print("\nby quarter (regime stability):")
+    print(by_quarter(all_sigs))
     print(f"\nwrote {args.out}")
     print("Open each triggered_at on TradingView and judge the setup yourself. "
           "The CSV is the point; the summary is a footnote.")
