@@ -33,7 +33,7 @@ gSetup = "Setup / scale-out"
 setupTF     = input.timeframe("240", "Setup timeframe (nominates)", group = gSetup,
      tooltip = "4H and 1D are the only v5 nominators. Switch here to see the other.")
 showLabels  = input.bool(true,  "Strat bar labels (chart TF)", group = gSetup)
-barLabelN   = input.int(25,     "  └ label only the last N bars (0 = all)", group = gSetup, minval = 0)
+barLabelN   = input.int(25,     "Show labels & T2 markers: last N bars (0 = all)", group = gSetup, minval = 0)
 onlyInside  = input.bool(false, "  └ only label inside bars (1) — the ones that arm", group = gSetup)
 labelSizeIn = input.string("Small", "Label / arrow size", group = gSetup,
      options = ["Tiny", "Small", "Normal", "Large", "Huge"])
@@ -53,6 +53,10 @@ showRunway  = input.bool(true,  "Untouched higher-TF rungs", group = gRun)
 
 gT2 = "15m Tier-2 confirmation"
 showT2      = input.bool(true,  "Mark 15m close-through trigger", group = gT2)
+t2Gated     = input.bool(true,  "  └ only GATED Tier-2 (match scanner)", group = gT2,
+     tooltip = "On: a T2 only prints if the setup also passed runway >= min R, FTFC >= min, "
+             + "and 4H+1D continuity -- i.e. what the scanner would actually alert. Off shows "
+             + "every raw 15m cross (very noisy).")
 
 cBull = input.color(color.new(#3fe08a, 0), "Bull", group = "Colors", inline = "c")
 cBear = input.color(color.new(#ff6b62, 0), "Bear", group = "Colors", inline = "c")
@@ -245,8 +249,30 @@ if showFTFC and barstate.islast
 // ----------------------------------------------- 15m Tier-2 confirmation ------
 // A 15m close through the active trigger = the entry. Only meaningful while a
 // setup is armed. Best viewed on a <=15m chart.
-t2Bull = showT2 and setupInside and c15 > trigBull and c15[1] <= trigBull
-t2Bear = showT2 and setupInside and c15 < trigBear and c15[1] >= trigBear
+// ---- gate the T2 marker to what the scanner would actually alert ----
+// Nearest untouched gating rung (4H/1D/1W) in R, from the trigger. Returns a
+// huge sentinel when there is no untouched rung, so "no runway" fails the gate.
+f_nearUp(trig) =>
+    r4 = f_untouchedHi(h1_240, hf_240) and h1_240 > trig ? (h1_240 - trig) / riskR : na
+    rd = f_untouchedHi(h1_D,   hf_D)   and h1_D   > trig ? (h1_D   - trig) / riskR : na
+    rw = f_untouchedHi(h1_W,   hf_W)   and h1_W   > trig ? (h1_W   - trig) / riskR : na
+    math.min(nz(r4, 1e9), nz(rd, 1e9), nz(rw, 1e9))
+f_nearDn(trig) =>
+    r4 = f_untouchedLo(l1_240, lf_240) and l1_240 < trig ? (trig - l1_240) / riskR : na
+    rd = f_untouchedLo(l1_D,   lf_D)   and l1_D   < trig ? (trig - l1_D)   / riskR : na
+    rw = f_untouchedLo(l1_W,   lf_W)   and l1_W   < trig ? (trig - l1_W)   / riskR : na
+    math.min(nz(r4, 1e9), nz(rd, 1e9), nz(rw, 1e9))
+
+nbU = f_nearUp(trigBull)
+nbD = f_nearDn(trigBear)
+gateBull = setupInside and riskR > 0 and d240 == 1  and dD == 1  and f_aligned(1)  >= minFtfc and nbU >= minRunwayR and nbU < 1e8
+gateBear = setupInside and riskR > 0 and d240 == -1 and dD == -1 and f_aligned(-1) >= minFtfc and nbD >= minRunwayR and nbD < 1e8
+
+passBull = t2Gated ? gateBull : setupInside
+passBear = t2Gated ? gateBear : setupInside
+
+t2Bull = showT2 and passBull and c15 > trigBull and c15[1] <= trigBull and inLabelWindow
+t2Bear = showT2 and passBear and c15 < trigBear and c15[1] >= trigBear and inLabelWindow
 // label.new (not plotshape) so the marker respects the size selector --
 // plotshape's size argument only accepts a compile-time constant.
 if t2Bull
