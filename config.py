@@ -164,6 +164,13 @@ class Config:
     proximity_alert_pct: float = field(
         default_factory=lambda: float(os.getenv("PROXIMITY_ALERT_PCT") or "0.75")
     )
+    # Freshness gate: do NOT send a Tier-1/Tier-2 alert whose confirming bar
+    # closed more than this many minutes ago. A late alert on a move that has
+    # already run is worse than silence -- this is what stops a level that got
+    # throttled by the alert budget from firing an hour late. 0 disables.
+    max_alert_age_minutes: int = field(
+        default_factory=lambda: int(os.getenv("MAX_ALERT_AGE_MIN") or "30")
+    )
     # Suppress alerts whose reward:risk (trigger->target vs trigger->stop) is
     # below this. The Strat's magnitude convention can hand you a target that
     # sits right on top of the trigger when the inside bar is nearly as wide
