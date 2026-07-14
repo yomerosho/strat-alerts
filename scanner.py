@@ -136,6 +136,8 @@ class StratScanner:
                 trigger=lv.level,
                 invalidation=lv.invalidation,
                 min_runway_r=getattr(CONFIG, "min_runway_r", magnitude.MIN_RUNWAY_R),
+                min_ftfc=getattr(CONFIG, "min_ftfc", magnitude.MIN_FTFC),
+                ftfc_tfs=getattr(CONFIG, "ftfc_timeframes", magnitude.FTFC_TFS),
             )
 
             # The Strat's native target is the same-timeframe prior extreme.

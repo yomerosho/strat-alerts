@@ -319,15 +319,21 @@ class BarProvider:
         df.index = df.index.tz_convert(ET)
         return df[["open", "high", "low", "close", "volume"]].sort_index()
 
-    def fetch(self, symbol: str) -> dict[str, pd.DataFrame]:
+    def fetch(self, symbol: str, lookback_days: Optional[int] = None) -> dict[str, pd.DataFrame]:
         """
         Returns {timeframe_label: DataFrame}, all session-aligned and
         RTH-only, plus "5Min" (the base) and "1D".
 
         Every intraday frame here is derived from the same 5Min pull, so a
         15m close and a 4H high can never disagree with each other.
+
+        lookback_days overrides how much 5-minute history to pull (and hence
+        every intraday frame). The live scanner leaves it None -- pulling 60
+        days every cycle is right for alerting. A backtest passes a big number
+        (e.g. 365) to validate out-of-sample without changing production fetch.
         """
-        raw5 = self._request(symbol, TimeFrame(5, TimeFrameUnit.Minute), LOOKBACK_DAYS["4H"])
+        days5 = lookback_days or LOOKBACK_DAYS["4H"]
+        raw5 = self._request(symbol, TimeFrame(5, TimeFrameUnit.Minute), days5)
         if raw5.empty:
             logger.warning("No 5Min data returned for %s", symbol)
             return {}
