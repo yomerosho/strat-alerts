@@ -145,6 +145,36 @@ def _rr(lv: ArmedLevel) -> str:
     return f"  (R:R {rr:.1f})" if rr is not None else ""
 
 
+def _scale_plan(lv: ArmedLevel) -> list[str]:
+    """
+    The committed exit model, spelled out on the alert.
+
+    Scale-out: half off at +1R, stop to breakeven, runner to the first gating
+    rung. On the v5 replay this ran ~88% win at +1.32R/trade -- the point is
+    that once +1R is paid, the runner can only scratch, never lose.
+
+    Falls back to a plain stop/target block if the level is unsized (no
+    invalidation), because then there is no 1R to scale at.
+    """
+    if lv.invalidation is None or lv.scale_level is None:
+        out = []
+        if lv.invalidation is not None:
+            out.append(f"Stop: {lv.invalidation:.2f}")
+        if lv.target is not None:
+            out.append(f"Target: {lv.target:.2f}{_rr(lv)}")
+        return out
+
+    runner = f"  ({lv.runner_r:.1f}R)" if lv.runner_r is not None else ""
+    lines = [
+        "*Plan — scale-out:*",
+        f"  Entry {lv.level:.2f}  ·  Stop {lv.invalidation:.2f}",
+        f"  +1R at {lv.scale_level:.2f} → take half, stop to breakeven",
+    ]
+    if lv.target is not None:
+        lines.append(f"  Runner → {lv.target:.2f}{runner}")
+    return lines
+
+
 def format_arm_alert(lv: ArmedLevel) -> str:
     """
     👀 Level is armed and price is approaching. No confirmation yet.
@@ -160,11 +190,7 @@ def format_arm_alert(lv: ArmedLevel) -> str:
         "",
         f"Price:  {lv.current_price:.2f}  ({abs(lv.distance_pct):.2f}% away)",
     ]
-    if lv.invalidation is not None:
-        lines.append(f"Invalid below: {lv.invalidation:.2f}" if lv.direction == "bull"
-                     else f"Invalid above: {lv.invalidation:.2f}")
-    if lv.target is not None:
-        lines.append(f"Target: {lv.target:.2f}{_rr(lv)}")
+    lines.extend(_scale_plan(lv))
     lines.append(f"Continuity: {lv.continuity}")
     if lv.setup_bar_closes_at is not None:
         lines.append(f"{lv.setup_tf} bar closes: {_fmt_time(lv.setup_bar_closes_at)}")
@@ -200,10 +226,7 @@ def format_tier1_alert(lv: ArmedLevel, f2_actionable: bool) -> str:
         else:
             lines.append(f"15m closes in *{lv.minutes_to_next_15m} min*")
 
-    if lv.invalidation is not None:
-        lines.append(f"Stop ref: {lv.invalidation:.2f}")
-    if lv.target is not None:
-        lines.append(f"Target: {lv.target:.2f}{_rr(lv)}")
+    lines.extend(_scale_plan(lv))
     lines.append(f"Continuity: {lv.continuity}")
     if lv.setup_bar_closes_at is not None:
         lines.append(f"{lv.setup_tf} bar closes: {_fmt_time(lv.setup_bar_closes_at)}")
@@ -234,10 +257,7 @@ def format_tier2_alert(lv: ArmedLevel) -> str:
     ]
     if lv.tier1_time is not None:
         lines.append(f"Tier 1 was: {_fmt_time(lv.tier1_time)}")
-    if lv.invalidation is not None:
-        lines.append(f"Stop ref: {lv.invalidation:.2f}")
-    if lv.target is not None:
-        lines.append(f"Target: {lv.target:.2f}{_rr(lv)}")
+    lines.extend(_scale_plan(lv))
     lines.append(f"Continuity: {lv.continuity}")
     if lv.setup_bar_closes_at is not None:
         lines.append(f"{lv.setup_tf} bar closes: {_fmt_time(lv.setup_bar_closes_at)}")

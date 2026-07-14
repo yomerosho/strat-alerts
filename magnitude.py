@@ -62,6 +62,20 @@ MIN_RUNWAY_R: float = 2.0
 NEST_TOLERANCE_PCT: float = 0.002   # 0.2%
 ALERT_BUDGET: int = 3
 
+# Minimum viable risk, as a fraction of the trigger price.
+#
+# F2 sets its invalidation at the FORMING bar's extreme. When the poke through
+# the prior bar's high is tiny -- a few cents -- risk collapses toward zero,
+# every R-multiple explodes toward infinity, and the setup rockets to the top of
+# the alert ranking on pure arithmetic. Observed in replay: a 4H F2D on a $493
+# underlying with a 3-cent stop and a "233R runway", scoring higher than every
+# genuine setup in the sample.
+#
+# It is not a trade. A 3-cent stop is inside the spread; you are wicked out
+# before the thesis has a chance to be wrong. Any setup whose risk is below the
+# noise floor of the instrument is an artifact of the arithmetic, not an edge.
+MIN_RISK_PCT: float = 0.0015   # 0.15% of price
+
 
 @dataclass(frozen=True)
 class Rung:
@@ -323,6 +337,16 @@ def evaluate(
 
     if invalidation is None:
         return d.fail("gate1: no invalidation, cannot size risk")
+
+    # Gate 2a -- minimum viable risk.
+    # Runs BEFORE the ladder, because with a near-zero denominator every
+    # R-multiple below is meaningless and the score is pure noise amplification.
+    risk = abs(trigger - invalidation)
+    if trigger > 0 and risk / trigger < MIN_RISK_PCT:
+        return d.fail(
+            f"gate2a: risk {risk:.2f} is {risk/trigger*100:.3f}% of price "
+            f"(< {MIN_RISK_PCT*100:.2f}%) -- stop is inside the noise"
+        )
 
     # Ladder + context
     d.rungs = open_magnitude(

@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 
 import pandas as pd
 
+import magnitude
 from alerting import AlertManager, AlertStore, format_for_tier
 from config import CONFIG, SNAPSHOT_FILE, STATE_DB_PATH, add_ticker, load_tickers, remove_ticker
 from levels import ARMED, FAMILY_F2, FAMILY_INSIDE, TIER1, TIER2, ArmedLevel
@@ -51,17 +52,6 @@ def continuity_ok(lv: ArmedLevel, tier: str) -> bool:
     except (ValueError, IndexError):
         return True
     return agree >= threshold
-
-
-def risk_reward_ok(lv: ArmedLevel) -> bool:
-    """A pattern can be textbook-correct and still not be a trade. If the
-    target sits on top of the trigger, don't ring the phone."""
-    if CONFIG.min_risk_reward <= 0:
-        return True
-    rr = lv.risk_reward
-    if rr is None:
-        return True  # no target computed -- let it through, judge it yourself
-    return rr >= CONFIG.min_risk_reward
 
 
 def tiers_to_announce(lv: ArmedLevel) -> list[str]:
@@ -101,47 +91,48 @@ def tiers_to_announce(lv: ArmedLevel) -> list[str]:
 
 async def process_symbol(
     scanner: StratScanner,
-    alerts: AlertManager,
-    store: AlertStore,
     symbol: str,
-    dry_run: bool,
-) -> tuple[list[dict], dict]:
+) -> tuple[list[ArmedLevel], dict]:
+    """Scan one symbol. Returns its passing levels and snapshot -- sends
+    nothing. Alerting is deferred to scan_cycle so Gate 5 (the watchlist-wide
+    budget) can rank every symbol's levels against each other before any go
+    out."""
     try:
         armed, snapshot = await asyncio.to_thread(scanner.scan_symbol, symbol)
     except Exception:
         logger.exception("Scan failed for %s", symbol)
         return [], {}
+    return armed, snapshot
 
-    for lv in armed:
-        if not risk_reward_ok(lv):
+
+async def send_level(
+    alerts: AlertManager,
+    store: AlertStore,
+    lv: ArmedLevel,
+    dry_run: bool,
+) -> None:
+    """Emit whatever tier alerts this level currently warrants, subject to the
+    continuity gate and the dedup store."""
+    for tier in tiers_to_announce(lv):
+        if not continuity_ok(lv, tier):
             logger.info(
-                "%s %s %s %s: R:R %.2f below %.2f; not alerting",
-                symbol, lv.setup_tf, lv.pattern, lv.direction,
-                lv.risk_reward or 0, CONFIG.min_risk_reward,
+                "%s %s %s: continuity %s below threshold; skipping %s",
+                lv.symbol, lv.setup_tf, lv.pattern, lv.continuity, tier,
             )
             continue
-        for tier in tiers_to_announce(lv):
-            if not continuity_ok(lv, tier):
-                logger.info(
-                    "%s %s %s: continuity %s below threshold; skipping %s",
-                    symbol, lv.setup_tf, lv.pattern, lv.continuity, tier,
-                )
-                continue
 
-            if store.already_sent(lv.key, tier):
-                continue
+        if store.already_sent(lv.key, tier):
+            continue
 
-            message = format_for_tier(lv, tier, CONFIG.failed_two_tier1_actionable)
-            if dry_run:
-                print("\n" + "-" * 60)
-                print(f"[DRY RUN] would send {tier}:")
-                print(message)
-            else:
-                logger.info("ALERT %s %s %s %s", tier, symbol, lv.setup_tf, lv.pattern)
-                await alerts.send(message)
-                store.mark_sent(lv.key, tier)
-
-    return [lv.to_dict() for lv in armed], snapshot
+        message = format_for_tier(lv, tier, CONFIG.failed_two_tier1_actionable)
+        if dry_run:
+            print("\n" + "-" * 60)
+            print(f"[DRY RUN] would send {tier}:")
+            print(message)
+        else:
+            logger.info("ALERT %s %s %s %s", tier, lv.symbol, lv.setup_tf, lv.pattern)
+            await alerts.send(message)
+            store.mark_sent(lv.key, tier)
 
 
 async def scan_cycle(
@@ -154,25 +145,37 @@ async def scan_cycle(
     logger.info("Scanning %d tickers | setup TFs: %s", len(tickers), ", ".join(CONFIG.setup_timeframes))
 
     results = await asyncio.gather(
-        *(process_symbol(scanner, alerts, store, s, dry_run) for s in tickers)
+        *(process_symbol(scanner, s) for s in tickers)
     )
 
-    all_levels: list[dict] = []
+    all_levels: list[ArmedLevel] = []
     snapshots: list[dict] = []
     for levels, snap in results:
         all_levels.extend(levels)
         if snap:
             snapshots.append(snap)
 
+    # --- Gate 5: hard cap across the whole watchlist, ranked by score ---
+    # This is why sending is deferred out of process_symbol: the budget is a
+    # property of the ENTIRE scan, not of any one symbol. A brilliant TSLA
+    # setup should crowd out a mediocre SPY one, and it can only do that if
+    # they are ranked together.
+    budgeted = magnitude.rank_and_budget(all_levels, budget=CONFIG.alert_budget)
+    for lv in budgeted:
+        await send_level(alerts, store, lv, dry_run)
+
+    # The board and snapshot show EVERYTHING that passed the gates, not just
+    # the budgeted few -- you still want to see what was in contention.
+    level_dicts = [lv.to_dict() for lv in all_levels]
     # Nearest-to-trigger first. That ordering IS the watchlist -- the top of
     # the board is what's about to happen.
-    all_levels.sort(key=lambda d: (-TIER_RANK[d["tier"]], abs(d["distance_pct"])))
+    level_dicts.sort(key=lambda d: (-TIER_RANK[d["tier"]], abs(d["distance_pct"])))
 
-    write_snapshot(tickers, all_levels, snapshots)
+    write_snapshot(tickers, level_dicts, snapshots)
     store.prune()
 
     if dry_run:
-        print_board(all_levels)
+        print_board(level_dicts)
 
 
 def print_board(levels: list[dict]) -> None:
@@ -201,10 +204,9 @@ def write_snapshot(tickers: list[str], levels: list[dict], snapshots: list[dict]
     payload = {
         "generated_at_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "generated_at_et": pd.Timestamp.now(tz="America/New_York").isoformat(),
-        "version": 4,
+        "version": 5,
         "tickers": tickers,
         "setup_timeframes": list(CONFIG.setup_timeframes),
-        "tier1_timeframe": CONFIG.tier1_timeframe,
         "tier2_timeframe": CONFIG.tier2_timeframe,
         "proximity_alert_pct": CONFIG.proximity_alert_pct,
         "min_risk_reward": CONFIG.min_risk_reward,

@@ -127,6 +127,37 @@ class ArmedLevel:
         return self.distance_pct > 0
 
     @property
+    def risk_per_share(self) -> Optional[float]:
+        """1R in price terms: trigger -> invalidation. None if unsized."""
+        if self.invalidation is None:
+            return None
+        r = abs(self.level - self.invalidation)
+        return r if r > 0 else None
+
+    @property
+    def scale_level(self) -> Optional[float]:
+        """
+        The +1R price -- the committed scale-out model's first action point.
+
+        At this price you take HALF off and pull the stop to breakeven. That
+        single move is what turns a 43%-win system into an ~88%-win one: the
+        runner can only scratch, never lose, once price has paid you 1R. The
+        runner then aims at `target` (the first gating rung).
+        """
+        r = self.risk_per_share
+        if r is None:
+            return None
+        return self.level + r if self.trigger_side == "above" else self.level - r
+
+    @property
+    def runner_r(self) -> Optional[float]:
+        """How many R the runner is playing for: trigger -> target, in R."""
+        r = self.risk_per_share
+        if r is None or self.target is None:
+            return None
+        return abs(self.target - self.level) / r
+
+    @property
     def risk_reward(self) -> Optional[float]:
         """
         Reward-to-risk, measured from the TRIGGER (not from current price).
