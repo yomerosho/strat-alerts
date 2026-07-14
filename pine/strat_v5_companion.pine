@@ -34,6 +34,7 @@ setupTF     = input.timeframe("240", "Setup timeframe (nominates)", group = gSet
      tooltip = "4H and 1D are the only v5 nominators. Switch here to see the other.")
 showLabels  = input.bool(true,  "Strat bar labels (chart TF)", group = gSetup)
 barLabelN   = input.int(25,     "  └ label only the last N bars (0 = all)", group = gSetup, minval = 0)
+onlyInside  = input.bool(false, "  └ only label inside bars (1) — the ones that arm", group = gSetup)
 labelSizeIn = input.string("Small", "Label / arrow size", group = gSetup,
      options = ["Tiny", "Small", "Normal", "Large", "Huge"])
 showSetup   = input.bool(true,  "Armed setup + scale-out lines", group = gSetup)
@@ -45,6 +46,7 @@ showFTFC    = input.bool(true,  "Show FTFC table", group = gFtfc)
 tblPos      = input.string("Top Right", "Table position", group = gFtfc,
      options = ["Top Right", "Top Left", "Bottom Right", "Bottom Left"])
 minFtfc     = input.int(4, "Min FTFC aligned (highlight)", group = gFtfc, minval = 0, maxval = 5)
+tblSizeIn   = input.string("Small", "Table text size", group = gFtfc, options = ["Tiny", "Small", "Normal", "Large", "Huge"])
 
 gRun = "Magnitude / runway"
 showRunway  = input.bool(true,  "Untouched higher-TF rungs", group = gRun)
@@ -60,6 +62,7 @@ cDim  = input.color(color.new(#7f93a8, 0), "Dim",  group = "Colors", inline = "c
 // One size selector shared by bar labels, setup/runway labels, and T2 arrows.
 f_size(s) => s == "Tiny" ? size.tiny : s == "Small" ? size.small : s == "Normal" ? size.normal : s == "Large" ? size.large : size.huge
 labelSize = f_size(labelSizeIn)
+tblSize   = f_size(tblSizeIn)
 
 // ------------------------------------------------------- strat bar label -----
 // Relative to the PRIOR bar. Same four cases as strat.label_bars.
@@ -70,7 +73,8 @@ f_label(h, l, ph, pl) =>
 
 barLbl = f_label(high, low, high[1], low[1])
 inLabelWindow = barLabelN == 0 or bar_index > last_bar_index - barLabelN
-if showLabels and barstate.isconfirmed and inLabelWindow
+passType      = not onlyInside or barLbl == "1"
+if showLabels and barstate.isconfirmed and inLabelWindow and passType
     isUp = barLbl == "2U"
     isDn = barLbl == "2D"
     col  = barLbl == "1" ? cAmber : barLbl == "3" ? color.new(#c4b5fd, 0) : isUp ? cBull : cBear
@@ -218,20 +222,20 @@ if barstate.islast
 // an if block.
 var table tbl = na
 f_row(i, name, d) =>
-    table.cell(tbl, 0, i, name, text_color = cDim, bgcolor = #18212c, text_size = size.small)
+    table.cell(tbl, 0, i, name, text_color = cDim, bgcolor = #18212c, text_size = tblSize)
     table.cell(tbl, 1, i, d == 1 ? "▲" : d == -1 ? "▼" : "—",
-         text_color = d == 1 ? cBull : d == -1 ? cBear : cDim, bgcolor = #18212c, text_size = size.small)
+         text_color = d == 1 ? cBull : d == -1 ? cBear : cDim, bgcolor = #18212c, text_size = tblSize)
 
 if showFTFC and barstate.islast
     pos = tblPos == "Top Right" ? position.top_right : tblPos == "Top Left" ? position.top_left : tblPos == "Bottom Right" ? position.bottom_right : position.bottom_left
     if na(tbl)
         tbl := table.new(pos, 2, 7, border_width = 1)
-    table.cell(tbl, 0, 0, "FTFC", text_color = color.white, bgcolor = #243040, text_size = size.small)
+    table.cell(tbl, 0, 0, "FTFC", text_color = color.white, bgcolor = #243040, text_size = tblSize)
     dirBull = f_aligned(1)
     dirBear = f_aligned(-1)
     lead = dirBull >= dirBear ? 1 : -1
     table.cell(tbl, 1, 0, (lead == 1 ? str.tostring(dirBull) : str.tostring(dirBear)) + "/5",
-         text_color = lead == 1 ? cBull : cBear, bgcolor = #243040, text_size = size.small)
+         text_color = lead == 1 ? cBull : cBear, bgcolor = #243040, text_size = tblSize)
     f_row(1, "1H", d60)
     f_row(2, "2H", d120)
     f_row(3, "4H", d240)
