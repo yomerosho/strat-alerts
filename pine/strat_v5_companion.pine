@@ -50,6 +50,11 @@ tblSizeIn   = input.string("Small", "Table text size", group = gFtfc, options = 
 
 gRun = "Magnitude / runway"
 showRunway  = input.bool(true,  "Untouched higher-TF rungs", group = gRun)
+gatingOnly  = input.bool(true,  "  └ only rungs at/above the setup TF", group = gRun,
+     tooltip = "The scanner ignores rungs below the setup timeframe (a 2H level on a 4H "
+             + "setup is a speed bump, not a wall). On leaves only the rungs that actually "
+             + "gate -- and stops the 2H high/low from cluttering right around price.")
+minRungR    = input.float(0.0,  "  └ hide rungs closer than N R", group = gRun, minval = 0, step = 0.5)
 
 gT2 = "Tier-2 confirmation (arrows)"
 showT2      = input.bool(true,  "Mark bar-close through trigger", group = gT2,
@@ -176,11 +181,11 @@ f_clear() =>
 
 // draw one runway rung (a horizontal ray) + its R label, if untouched & beyond
 f_rung(prior, form, forHi, trig, valid, xL, xR, tfName) =>
-    if valid and not na(prior)
+    if valid and not na(prior) and riskR > 0
         untouched = forHi ? f_untouchedHi(prior, form) : f_untouchedLo(prior, form)
         beyond    = forHi ? (prior > trig) : (prior < trig)
-        if untouched and beyond
-            r = math.abs(prior - trig) / riskR
+        r = math.abs(prior - trig) / riskR
+        if untouched and beyond and r >= minRungR
             f_line(xL, prior, xR, prior, cDim, line.style_dotted, 1)
             f_lab(xR, prior, tfName + " " + str.tostring(prior, format.mintick) + "  " +
                  str.tostring(r, "#.0") + "R", cDim, label.style_label_left)
@@ -216,18 +221,25 @@ if barstate.islast
         f_line(xL, scaleBear, xR, scaleBear, cAmber, line.style_dotted, 1)
         f_lab(xR, scaleBear, "+1R scale → BE " + str.tostring(scaleBear, format.mintick), cAmber, label.style_label_left)
 
-    // ---- runway rungs (drawn even without a setup, as context) ----
+    // ---- runway rungs ----
+    // Skip any rung below the setup TF when gatingOnly is on: those don't gate
+    // and just clutter the area around price (the 2H high/low "double line").
     if showRunway
+        setSec = timeframe.in_seconds(setupTF)
+        ok2H = not gatingOnly or timeframe.in_seconds("120") >= setSec
+        ok4H = not gatingOnly or timeframe.in_seconds("240") >= setSec
+        ok1D = not gatingOnly or timeframe.in_seconds("D")   >= setSec
+        ok1W = not gatingOnly or timeframe.in_seconds("W")   >= setSec
         trigUp = setupInside ? trigBull : close
         trigDn = setupInside ? trigBear : close
-        f_rung(h1_120, hf_120, true,  trigUp, true, xL, xR, "2H")
-        f_rung(h1_240, hf_240, true,  trigUp, true, xL, xR, "4H")
-        f_rung(h1_D,   hf_D,   true,  trigUp, true, xL, xR, "1D")
-        f_rung(h1_W,   hf_W,   true,  trigUp, true, xL, xR, "1W")
-        f_rung(l1_120, lf_120, false, trigDn, true, xL, xR, "2H")
-        f_rung(l1_240, lf_240, false, trigDn, true, xL, xR, "4H")
-        f_rung(l1_D,   lf_D,   false, trigDn, true, xL, xR, "1D")
-        f_rung(l1_W,   lf_W,   false, trigDn, true, xL, xR, "1W")
+        f_rung(h1_120, hf_120, true,  trigUp, ok2H, xL, xR, "2H")
+        f_rung(h1_240, hf_240, true,  trigUp, ok4H, xL, xR, "4H")
+        f_rung(h1_D,   hf_D,   true,  trigUp, ok1D, xL, xR, "1D")
+        f_rung(h1_W,   hf_W,   true,  trigUp, ok1W, xL, xR, "1W")
+        f_rung(l1_120, lf_120, false, trigDn, ok2H, xL, xR, "2H")
+        f_rung(l1_240, lf_240, false, trigDn, ok4H, xL, xR, "4H")
+        f_rung(l1_D,   lf_D,   false, trigDn, ok1D, xL, xR, "1D")
+        f_rung(l1_W,   lf_W,   false, trigDn, ok1W, xL, xR, "1W")
 
 // --------------------------------------------------------- FTFC table ---------
 // f_row MUST live at global scope -- Pine forbids function definitions inside
