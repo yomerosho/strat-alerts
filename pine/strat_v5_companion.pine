@@ -1,0 +1,242 @@
+//@version=6
+// =============================================================================
+// Strat v5 Companion
+// -----------------------------------------------------------------------------
+// The on-chart twin of the v5 scanner. Everything here mirrors the Python:
+//
+//   * Strat bar labels (1 / 2U / 2D / 3)            -> strat.label_bars
+//   * Armed inside-bar setup on the Setup TF        -> levels.arm_inside_bar
+//     (2-1-2 / 3-1-2 / 1-1-2), both edges armed
+//   * Scale-out geometry: trigger, stop, +1R, runner-> alerting._scale_plan
+//   * Magnitude / runway: untouched higher-TF prior -> magnitude.open_magnitude
+//     extremes, priced in R
+//   * FTFC continuity across 1H/2H/4H/1D/1W         -> magnitude.continuity_gate
+//   * 15m Tier-2 close-through marker               -> levels.evaluate_tiers
+//
+// HOW TO APPLY
+//   Levels are prices, so this runs on ANY chart timeframe. Put it on a 15m
+//   chart to watch Tier-2 confirmations land against a 4H setup, or on the 4H
+//   chart itself to see the bar labels. The Setup TF that NOMINATES the level
+//   is an input (default 4H; switch to 1D for daily setups).
+//
+// NON-REPAINT
+//   Every higher-timeframe read uses confirmed history (high[1], lookahead_off),
+//   so a level does not appear until the bar that defines it has closed --
+//   exactly like the scanner, which only arms off CLOSED setup bars.
+// =============================================================================
+
+indicator("Strat v5 Companion", overlay = true,
+     max_lines_count = 500, max_labels_count = 500, max_boxes_count = 50)
+
+// ---------------------------------------------------------------- inputs -----
+gSetup = "Setup / scale-out"
+setupTF     = input.timeframe("240", "Setup timeframe (nominates)", group = gSetup,
+     tooltip = "4H and 1D are the only v5 nominators. Switch here to see the other.")
+showLabels  = input.bool(true,  "Strat bar labels (chart TF)", group = gSetup)
+showSetup   = input.bool(true,  "Armed setup + scale-out lines", group = gSetup)
+minRunwayR  = input.float(2.0,  "Min runway (R) to call it valid", group = gSetup, step = 0.5)
+drawLen     = input.int(60,     "Draw levels back this many bars", group = gSetup, minval = 10)
+
+gFtfc = "FTFC continuity (Gate 3b)"
+showFTFC    = input.bool(true,  "Show FTFC table", group = gFtfc)
+tblPos      = input.string("Top Right", "Table position", group = gFtfc,
+     options = ["Top Right", "Top Left", "Bottom Right", "Bottom Left"])
+minFtfc     = input.int(4, "Min FTFC aligned (highlight)", group = gFtfc, minval = 0, maxval = 5)
+
+gRun = "Magnitude / runway"
+showRunway  = input.bool(true,  "Untouched higher-TF rungs", group = gRun)
+
+gT2 = "15m Tier-2 confirmation"
+showT2      = input.bool(true,  "Mark 15m close-through trigger", group = gT2)
+
+cBull = input.color(color.new(#3fe08a, 0), "Bull", group = "Colors", inline = "c")
+cBear = input.color(color.new(#ff6b62, 0), "Bear", group = "Colors", inline = "c")
+cAmber= input.color(color.new(#ffc043, 0), "Scale", group = "Colors", inline = "c")
+cDim  = input.color(color.new(#7f93a8, 0), "Dim",  group = "Colors", inline = "c")
+
+// ------------------------------------------------------- strat bar label -----
+// Relative to the PRIOR bar. Same four cases as strat.label_bars.
+f_label(h, l, ph, pl) =>
+    up = h > ph
+    dn = l < pl
+    up and dn ? "3" : up ? "2U" : dn ? "2D" : "1"
+
+barLbl = f_label(high, low, high[1], low[1])
+if showLabels and barstate.isconfirmed
+    isUp = barLbl == "2U"
+    isDn = barLbl == "2D"
+    col  = barLbl == "1" ? cAmber : barLbl == "3" ? color.new(#c4b5fd, 0) : isUp ? cBull : cBear
+    label.new(bar_index, isDn ? high : low,
+         text = barLbl,
+         style = isDn ? label.style_label_down : label.style_label_up,
+         color = color.new(color.black, 100), textcolor = col, size = size.tiny)
+
+// --------------------------------------------- higher-timeframe reads --------
+// One confirmed-history tuple per timeframe: prior-closed high/low, the live
+// (forming) high/low, and the forming close/open (for continuity).
+f_tf(tf) =>
+    request.security(syminfo.tickerid, tf,
+         [high[1], low[1], high, low, close, open],
+         lookahead = barmerge.lookahead_off)
+
+[h1_60,  l1_60,  hf_60,  lf_60,  c_60,  o_60 ] = f_tf("60")
+[h1_120, l1_120, hf_120, lf_120, c_120, o_120] = f_tf("120")
+[h1_240, l1_240, hf_240, lf_240, c_240, o_240] = f_tf("240")
+[h1_D,   l1_D,   hf_D,   lf_D,   c_D,   o_D  ] = f_tf("D")
+[h1_W,   l1_W,   hf_W,   lf_W,   c_W,   o_W  ] = f_tf("W")
+
+// Setup TF needs three bars of history to name the pattern (2/3/1 before the 1).
+[sh1, sl1, sh2, sl2, sh3, sl3, shf, slf] = request.security(syminfo.tickerid, setupTF,
+     [high[1], low[1], high[2], low[2], high[3], low[3], high, low],
+     lookahead = barmerge.lookahead_off)
+
+c15 = request.security(syminfo.tickerid, "15", close, lookahead = barmerge.lookahead_off)
+
+// ------------------------------------------------------- the armed setup -----
+// Last CLOSED setup bar is an inside bar -> arm both edges. Trigger is the
+// inside bar's extreme; stop is the opposite edge; risk is its range.
+setupInside = sh1 <= sh2 and sl1 >= sl2
+riskR       = sh1 - sl1
+
+// Pattern name from the bar the inside bar is inside of (sh2/sl2 vs sh3/sl3).
+prevUp   = sh2 > sh3
+prevDn   = sl2 < sl3
+patName  = prevUp and prevDn ? "3-1-2" : (prevUp or prevDn) ? "2-1-2" : "1-1-2"
+
+trigBull = sh1
+trigBear = sl1
+stopBull = sl1
+stopBear = sh1
+scaleBull = sh1 + riskR      // +1R above the trigger
+scaleBear = sl1 - riskR      // +1R below the trigger
+
+// ------------------------------------------- runway: untouched HTF rungs ------
+// A rung is the prior-closed extreme of a higher TF that the FORMING bar on
+// that TF has NOT yet traded through, and that lies BEYOND the trigger.
+// Bull rungs are prior HIGHS above; bear rungs are prior LOWS below.
+f_untouchedHi(prior, form) => form < prior          // forming high hasn't exceeded it
+f_untouchedLo(prior, form) => form > prior          // forming low hasn't undercut it
+
+// --------------------------------------------------------- FTFC continuity ----
+f_dir(c, o) => c > o ? 1 : c < o ? -1 : 0
+d60  = f_dir(c_60,  o_60)
+d120 = f_dir(c_120, o_120)
+d240 = f_dir(c_240, o_240)
+dD   = f_dir(c_D,   o_D)
+dW   = f_dir(c_W,   o_W)
+
+// Aligned count for a given trade direction (+1 bull / -1 bear).
+f_aligned(dirSign) =>
+    (d60 == dirSign ? 1 : 0) + (d120 == dirSign ? 1 : 0) + (d240 == dirSign ? 1 : 0) +
+     (dD == dirSign ? 1 : 0) + (dW == dirSign ? 1 : 0)
+
+// =========================================================== drawing ==========
+var line[]  LNS = array.new<line>()
+var label[] LBS = array.new<label>()
+
+f_line(x1, y1, x2, y2, col, stl, wid) =>
+    l = line.new(x1, y1, x2, y2, xloc = xloc.bar_index, color = col, style = stl, width = wid)
+    array.push(LNS, l)
+f_lab(x, y, txt, col, stl) =>
+    lb = label.new(x, y, txt, xloc = xloc.bar_index, style = stl, color = color.new(color.black, 100),
+         textcolor = col, size = size.small)
+    array.push(LBS, lb)
+
+f_clear() =>
+    for l in LNS
+        line.delete(l)
+    array.clear(LNS)
+    for lb in LBS
+        label.delete(lb)
+    array.clear(LBS)
+
+// draw one runway rung (a horizontal ray) + its R label, if untouched & beyond
+f_rung(prior, form, forHi, trig, valid, xL, xR, tfName) =>
+    if valid and not na(prior)
+        untouched = forHi ? f_untouchedHi(prior, form) : f_untouchedLo(prior, form)
+        beyond    = forHi ? (prior > trig) : (prior < trig)
+        if untouched and beyond
+            r = math.abs(prior - trig) / riskR
+            f_line(xL, prior, xR, prior, cDim, line.style_dotted, 1)
+            f_lab(xR, prior, tfName + " " + str.tostring(prior, format.mintick) + "  " +
+                 str.tostring(r, "#.0") + "R", cDim, label.style_label_left)
+
+if barstate.islast
+    f_clear()
+    xL = bar_index - drawLen
+    xR = bar_index + 12
+
+    if showSetup and setupInside and riskR > 0
+        rwBullUp = math.max(f_untouchedHi(h1_240, hf_240) and h1_240 > trigBull ? (h1_240 - trigBull) / riskR : 0, f_untouchedHi(h1_D, hf_D) and h1_D > trigBull ? (h1_D - trigBull) / riskR : 0, f_untouchedHi(h1_W, hf_W) and h1_W > trigBull ? (h1_W - trigBull) / riskR : 0)
+        rwBearUp = math.max(f_untouchedLo(l1_240, lf_240) and l1_240 < trigBear ? (trigBear - l1_240) / riskR : 0, f_untouchedLo(l1_D, lf_D) and l1_D < trigBear ? (trigBear - l1_D) / riskR : 0, f_untouchedLo(l1_W, lf_W) and l1_W < trigBear ? (trigBear - l1_W) / riskR : 0)
+
+        // ---- BULL side (break above) ----
+        okB = rwBullUp >= minRunwayR
+        f_line(xL, trigBull, xR, trigBull, cBull, line.style_solid, 2)
+        f_lab(xR, trigBull, "▲ " + patName + " trigger " + str.tostring(trigBull, format.mintick) +
+             (okB ? "  " + str.tostring(rwBullUp, "#.0") + "R" : "  (<" + str.tostring(minRunwayR, "#.0") + "R)"),
+             cBull, label.style_label_left)
+        f_line(xL, stopBull, xR, stopBull, cBear, line.style_dashed, 1)
+        f_lab(xR, stopBull, "stop " + str.tostring(stopBull, format.mintick), cBear, label.style_label_left)
+        f_line(xL, scaleBull, xR, scaleBull, cAmber, line.style_dotted, 1)
+        f_lab(xR, scaleBull, "+1R scale → BE " + str.tostring(scaleBull, format.mintick), cAmber, label.style_label_left)
+
+        // ---- BEAR side (break below) ----
+        okS = rwBearUp >= minRunwayR
+        f_line(xL, trigBear, xR, trigBear, cBear, line.style_solid, 2)
+        f_lab(xR, trigBear, "▼ " + patName + " trigger " + str.tostring(trigBear, format.mintick) +
+             (okS ? "  " + str.tostring(rwBearUp, "#.0") + "R" : "  (<" + str.tostring(minRunwayR, "#.0") + "R)"),
+             cBear, label.style_label_left)
+        f_line(xL, stopBear, xR, stopBear, cBull, line.style_dashed, 1)
+        f_lab(xR, stopBear, "stop " + str.tostring(stopBear, format.mintick), cBull, label.style_label_left)
+        f_line(xL, scaleBear, xR, scaleBear, cAmber, line.style_dotted, 1)
+        f_lab(xR, scaleBear, "+1R scale → BE " + str.tostring(scaleBear, format.mintick), cAmber, label.style_label_left)
+
+    // ---- runway rungs (drawn even without a setup, as context) ----
+    if showRunway
+        trigUp = setupInside ? trigBull : close
+        trigDn = setupInside ? trigBear : close
+        f_rung(h1_120, hf_120, true,  trigUp, true, xL, xR, "2H")
+        f_rung(h1_240, hf_240, true,  trigUp, true, xL, xR, "4H")
+        f_rung(h1_D,   hf_D,   true,  trigUp, true, xL, xR, "1D")
+        f_rung(h1_W,   hf_W,   true,  trigUp, true, xL, xR, "1W")
+        f_rung(l1_120, lf_120, false, trigDn, true, xL, xR, "2H")
+        f_rung(l1_240, lf_240, false, trigDn, true, xL, xR, "4H")
+        f_rung(l1_D,   lf_D,   false, trigDn, true, xL, xR, "1D")
+        f_rung(l1_W,   lf_W,   false, trigDn, true, xL, xR, "1W")
+
+// --------------------------------------------------------- FTFC table ---------
+// f_row MUST live at global scope -- Pine forbids function definitions inside
+// an if block.
+var table tbl = na
+f_row(i, name, d) =>
+    table.cell(tbl, 0, i, name, text_color = cDim, bgcolor = #18212c, text_size = size.small)
+    table.cell(tbl, 1, i, d == 1 ? "▲" : d == -1 ? "▼" : "—",
+         text_color = d == 1 ? cBull : d == -1 ? cBear : cDim, bgcolor = #18212c, text_size = size.small)
+
+if showFTFC and barstate.islast
+    pos = tblPos == "Top Right" ? position.top_right : tblPos == "Top Left" ? position.top_left : tblPos == "Bottom Right" ? position.bottom_right : position.bottom_left
+    if na(tbl)
+        tbl := table.new(pos, 2, 7, border_width = 1)
+    table.cell(tbl, 0, 0, "FTFC", text_color = color.white, bgcolor = #243040, text_size = size.small)
+    dirBull = f_aligned(1)
+    dirBear = f_aligned(-1)
+    lead = dirBull >= dirBear ? 1 : -1
+    table.cell(tbl, 1, 0, (lead == 1 ? str.tostring(dirBull) : str.tostring(dirBear)) + "/5",
+         text_color = lead == 1 ? cBull : cBear, bgcolor = #243040, text_size = size.small)
+    f_row(1, "1H", d60)
+    f_row(2, "2H", d120)
+    f_row(3, "4H", d240)
+    f_row(4, "1D", dD)
+    f_row(5, "1W", dW)
+
+// ----------------------------------------------- 15m Tier-2 confirmation ------
+// A 15m close through the active trigger = the entry. Only meaningful while a
+// setup is armed. Best viewed on a <=15m chart.
+t2Bull = showT2 and setupInside and c15 > trigBull and c15[1] <= trigBull
+t2Bear = showT2 and setupInside and c15 < trigBear and c15[1] >= trigBear
+plotshape(t2Bull, title = "Tier-2 bull", style = shape.triangleup,   location = location.belowbar, color = cBull, size = size.small, text = "T2")
+plotshape(t2Bear, title = "Tier-2 bear", style = shape.triangledown, location = location.abovebar, color = cBear, size = size.small, text = "T2")
+
+alertcondition(t2Bull, "Tier-2 bull confirmation", "15m closed through the bull trigger")
+alertcondition(t2Bear, "Tier-2 bear confirmation", "15m closed through the bear trigger")
