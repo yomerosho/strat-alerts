@@ -54,7 +54,7 @@ def continuity_ok(lv: ArmedLevel, tier: str) -> bool:
     return agree >= threshold
 
 
-def tiers_to_announce(lv: ArmedLevel) -> list[str]:
+def tiers_to_announce(lv: ArmedLevel, now_et: pd.Timestamp) -> list[str]:
     """
     Which alerts does this level currently warrant?
 
@@ -65,8 +65,13 @@ def tiers_to_announce(lv: ArmedLevel) -> list[str]:
     with no context for how it got there.
 
     The ARM alert is proximity-gated: a level 3% away shouldn't ping you at
-    9:31. Tier 1 and Tier 2 are never proximity-gated -- they already
-    triggered, distance is moot.
+    9:31.
+
+    FRESHNESS GATE: a Tier-1/Tier-2 is announced only if its confirming bar
+    closed within `max_alert_age_minutes`. A level that confirmed an hour ago
+    and has already run to its target must NOT fire a late alert -- that is the
+    "10:00 signal delivered at 11:29" bug. If the budget throttled it past the
+    window, it is dropped, not sent stale.
     """
     out: list[str] = []
     rank = TIER_RANK[lv.tier]
@@ -82,9 +87,16 @@ def tiers_to_announce(lv: ArmedLevel) -> list[str]:
             out.append(ARMED)
         return out
 
-    if rank >= 1:
+    max_min = getattr(CONFIG, "max_alert_age_minutes", 30)
+
+    def fresh(ts) -> bool:
+        if max_min <= 0:
+            return True
+        return ts is not None and (now_et - ts) <= pd.Timedelta(minutes=max_min)
+
+    if rank >= 1 and fresh(lv.tier1_time):
         out.append(TIER1)
-    if rank >= 2:
+    if rank >= 2 and fresh(lv.tier2_time):
         out.append(TIER2)
     return out
 
@@ -109,11 +121,12 @@ async def send_level(
     alerts: AlertManager,
     store: AlertStore,
     lv: ArmedLevel,
+    now_et: pd.Timestamp,
     dry_run: bool,
 ) -> None:
     """Emit whatever tier alerts this level currently warrants, subject to the
     continuity gate and the dedup store."""
-    for tier in tiers_to_announce(lv):
+    for tier in tiers_to_announce(lv, now_et):
         if not continuity_ok(lv, tier):
             logger.info(
                 "%s %s %s: continuity %s below threshold; skipping %s",
@@ -155,14 +168,17 @@ async def scan_cycle(
         if snap:
             snapshots.append(snap)
 
-    # --- Gate 5: hard cap across the whole watchlist, ranked by score ---
-    # This is why sending is deferred out of process_symbol: the budget is a
-    # property of the ENTIRE scan, not of any one symbol. A brilliant TSLA
-    # setup should crowd out a mediocre SPY one, and it can only do that if
-    # they are ranked together.
-    budgeted = magnitude.rank_and_budget(all_levels, budget=CONFIG.alert_budget)
+    # --- Freshness gate + Gate 5 (budget), across the whole watchlist ---
+    # Only levels with a FRESH tier to announce compete for the budget. A level
+    # that confirmed an hour ago (throttled last scan, or already run to target)
+    # must not consume a budget slot AND must not fire a stale alert -- that was
+    # the "10:00 signal at 11:29" bug. The budget then ranks what's left by
+    # score: a brilliant TSLA setup crowds out a mediocre SPY one.
+    now_et = pd.Timestamp.now(tz="America/New_York")
+    announceable = [lv for lv in all_levels if tiers_to_announce(lv, now_et)]
+    budgeted = magnitude.rank_and_budget(announceable, budget=CONFIG.alert_budget)
     for lv in budgeted:
-        await send_level(alerts, store, lv, dry_run)
+        await send_level(alerts, store, lv, now_et, dry_run)
 
     # The board and snapshot show EVERYTHING that passed the gates, not just
     # the budgeted few -- you still want to see what was in contention.
