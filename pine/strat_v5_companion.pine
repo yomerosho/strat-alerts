@@ -33,6 +33,9 @@ gSetup = "Setup / scale-out"
 setupTF     = input.timeframe("240", "Setup timeframe (nominates)", group = gSetup,
      tooltip = "4H and 1D are the only v5 nominators. Switch here to see the other.")
 showLabels  = input.bool(true,  "Strat bar labels (chart TF)", group = gSetup)
+barLabelN   = input.int(25,     "  └ label only the last N bars (0 = all)", group = gSetup, minval = 0)
+labelSizeIn = input.string("Small", "Label / arrow size", group = gSetup,
+     options = ["Tiny", "Small", "Normal", "Large", "Huge"])
 showSetup   = input.bool(true,  "Armed setup + scale-out lines", group = gSetup)
 minRunwayR  = input.float(2.0,  "Min runway (R) to call it valid", group = gSetup, step = 0.5)
 drawLen     = input.int(60,     "Draw levels back this many bars", group = gSetup, minval = 10)
@@ -54,6 +57,10 @@ cBear = input.color(color.new(#ff6b62, 0), "Bear", group = "Colors", inline = "c
 cAmber= input.color(color.new(#ffc043, 0), "Scale", group = "Colors", inline = "c")
 cDim  = input.color(color.new(#7f93a8, 0), "Dim",  group = "Colors", inline = "c")
 
+// One size selector shared by bar labels, setup/runway labels, and T2 arrows.
+f_size(s) => s == "Tiny" ? size.tiny : s == "Small" ? size.small : s == "Normal" ? size.normal : s == "Large" ? size.large : size.huge
+labelSize = f_size(labelSizeIn)
+
 // ------------------------------------------------------- strat bar label -----
 // Relative to the PRIOR bar. Same four cases as strat.label_bars.
 f_label(h, l, ph, pl) =>
@@ -62,14 +69,15 @@ f_label(h, l, ph, pl) =>
     up and dn ? "3" : up ? "2U" : dn ? "2D" : "1"
 
 barLbl = f_label(high, low, high[1], low[1])
-if showLabels and barstate.isconfirmed
+inLabelWindow = barLabelN == 0 or bar_index > last_bar_index - barLabelN
+if showLabels and barstate.isconfirmed and inLabelWindow
     isUp = barLbl == "2U"
     isDn = barLbl == "2D"
     col  = barLbl == "1" ? cAmber : barLbl == "3" ? color.new(#c4b5fd, 0) : isUp ? cBull : cBear
     label.new(bar_index, isDn ? high : low,
          text = barLbl,
          style = isDn ? label.style_label_down : label.style_label_up,
-         color = color.new(color.black, 100), textcolor = col, size = size.tiny)
+         color = color.new(color.black, 100), textcolor = col, size = labelSize)
 
 // --------------------------------------------- higher-timeframe reads --------
 // One confirmed-history tuple per timeframe: prior-closed high/low, the live
@@ -139,7 +147,7 @@ f_line(x1, y1, x2, y2, col, stl, wid) =>
     array.push(LNS, l)
 f_lab(x, y, txt, col, stl) =>
     lb = label.new(x, y, txt, xloc = xloc.bar_index, style = stl, color = color.new(color.black, 100),
-         textcolor = col, size = size.small)
+         textcolor = col, size = labelSize)
     array.push(LBS, lb)
 
 f_clear() =>
@@ -235,8 +243,14 @@ if showFTFC and barstate.islast
 // setup is armed. Best viewed on a <=15m chart.
 t2Bull = showT2 and setupInside and c15 > trigBull and c15[1] <= trigBull
 t2Bear = showT2 and setupInside and c15 < trigBear and c15[1] >= trigBear
-plotshape(t2Bull, title = "Tier-2 bull", style = shape.triangleup,   location = location.belowbar, color = cBull, size = size.small, text = "T2")
-plotshape(t2Bear, title = "Tier-2 bear", style = shape.triangledown, location = location.abovebar, color = cBear, size = size.small, text = "T2")
+// label.new (not plotshape) so the marker respects the size selector --
+// plotshape's size argument only accepts a compile-time constant.
+if t2Bull
+    label.new(bar_index, na, "T2", yloc = yloc.belowbar, style = label.style_label_up,
+         color = cBull, textcolor = color.black, size = labelSize)
+if t2Bear
+    label.new(bar_index, na, "T2", yloc = yloc.abovebar, style = label.style_label_down,
+         color = cBear, textcolor = color.black, size = labelSize)
 
 alertcondition(t2Bull, "Tier-2 bull confirmation", "15m closed through the bull trigger")
 alertcondition(t2Bear, "Tier-2 bear confirmation", "15m closed through the bear trigger")
