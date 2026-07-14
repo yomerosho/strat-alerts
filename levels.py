@@ -195,6 +195,10 @@ class ArmedLevel:
             "invalidation": round(self.invalidation, 2) if self.invalidation else None,
             "target": round(self.target, 2) if self.target else None,
             "risk_reward": round(self.risk_reward, 2) if self.risk_reward is not None else None,
+            # v5 scale-out plan: take half at +1R, stop to breakeven, runner to
+            # the first gating rung (`target`). The dashboard draws this.
+            "scale_level": round(self.scale_level, 2) if self.scale_level is not None else None,
+            "runner_r": round(self.runner_r, 2) if self.runner_r is not None else None,
             "current_price": round(self.current_price, 2),
             "distance_pct": round(self.distance_pct, 3),
             "tier": self.tier,

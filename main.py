@@ -209,7 +209,11 @@ def write_snapshot(tickers: list[str], levels: list[dict], snapshots: list[dict]
         "setup_timeframes": list(CONFIG.setup_timeframes),
         "tier2_timeframe": CONFIG.tier2_timeframe,
         "proximity_alert_pct": CONFIG.proximity_alert_pct,
-        "min_risk_reward": CONFIG.min_risk_reward,
+        # v5 gate params (min_risk_reward is no longer a gate -- superseded by
+        # runway + FTFC). The dashboard reads these to describe what it's showing.
+        "min_runway_r": getattr(CONFIG, "min_runway_r", 2.0),
+        "min_ftfc": getattr(CONFIG, "min_ftfc", 4),
+        "ftfc_timeframes": list(getattr(CONFIG, "ftfc_timeframes", ())),
         "armed_levels": levels,
         "symbols": snapshots,
     }
