@@ -51,8 +51,11 @@ tblSizeIn   = input.string("Small", "Table text size", group = gFtfc, options = 
 gRun = "Magnitude / runway"
 showRunway  = input.bool(true,  "Untouched higher-TF rungs", group = gRun)
 
-gT2 = "15m Tier-2 confirmation"
-showT2      = input.bool(true,  "Mark 15m close-through trigger", group = gT2)
+gT2 = "Tier-2 confirmation (arrows)"
+showT2      = input.bool(true,  "Mark bar-close through trigger", group = gT2,
+     tooltip = "Marks where a bar CLOSES through the gated trigger, on the chart's own "
+             + "timeframe. On a <=15m chart this is the true 15m Tier 2; on a 4H/1D chart "
+             + "it marks where the setup fired.")
 t2Gated     = input.bool(true,  "  └ only GATED Tier-2 (match scanner)", group = gT2,
      tooltip = "On: a T2 only prints if the setup also passed runway >= min R, FTFC >= min, "
              + "and 4H+1D continuity -- i.e. what the scanner would actually alert. Off shows "
@@ -106,7 +109,12 @@ f_tf(tf) =>
      [high[1], low[1], high[2], low[2], high[3], low[3], high, low],
      lookahead = barmerge.lookahead_off)
 
-c15 = request.security(syminfo.tickerid, "15", close, lookahead = barmerge.lookahead_off)
+// Tier-2 confirmation (below) uses the CHART timeframe's own close crossing
+// the trigger. On a <=15m chart that IS the 15m close -- the true Tier 2. On a
+// 4H/1D chart it marks where the setup's own bar closed through the trigger,
+// i.e. the moment the level actually fired. Either way it's meaningful and
+// stays on the chart you're looking at, instead of forcing a 15m read that a
+// higher-TF chart can't resolve.
 
 // ------------------------------------------------------- the armed setup -----
 // Last CLOSED setup bar is an inside bar -> arm both edges. Trigger is the
@@ -271,8 +279,8 @@ gateBear = setupInside and riskR > 0 and d240 == -1 and dD == -1 and f_aligned(-
 passBull = t2Gated ? gateBull : setupInside
 passBear = t2Gated ? gateBear : setupInside
 
-t2Bull = showT2 and passBull and c15 > trigBull and c15[1] <= trigBull and inLabelWindow
-t2Bear = showT2 and passBear and c15 < trigBear and c15[1] >= trigBear and inLabelWindow
+t2Bull = showT2 and passBull and barstate.isconfirmed and close > trigBull and close[1] <= trigBull and inLabelWindow
+t2Bear = showT2 and passBear and barstate.isconfirmed and close < trigBear and close[1] >= trigBear and inLabelWindow
 // label.new (not plotshape) so the marker respects the size selector --
 // plotshape's size argument only accepts a compile-time constant.
 if t2Bull
@@ -282,5 +290,5 @@ if t2Bear
     label.new(bar_index, na, "T2", yloc = yloc.abovebar, style = label.style_label_down,
          color = cBear, textcolor = color.black, size = labelSize)
 
-alertcondition(t2Bull, "Tier-2 bull confirmation", "15m closed through the bull trigger")
-alertcondition(t2Bear, "Tier-2 bear confirmation", "15m closed through the bear trigger")
+alertcondition(t2Bull, "Tier-2 bull confirmation", "bar closed through the gated bull trigger")
+alertcondition(t2Bear, "Tier-2 bear confirmation", "bar closed through the gated bear trigger")
