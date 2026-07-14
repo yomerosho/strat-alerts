@@ -199,27 +199,28 @@ if barstate.islast
         rwBullUp = math.max(f_untouchedHi(h1_240, hf_240) and h1_240 > trigBull ? (h1_240 - trigBull) / riskR : 0, f_untouchedHi(h1_D, hf_D) and h1_D > trigBull ? (h1_D - trigBull) / riskR : 0, f_untouchedHi(h1_W, hf_W) and h1_W > trigBull ? (h1_W - trigBull) / riskR : 0)
         rwBearUp = math.max(f_untouchedLo(l1_240, lf_240) and l1_240 < trigBear ? (trigBear - l1_240) / riskR : 0, f_untouchedLo(l1_D, lf_D) and l1_D < trigBear ? (trigBear - l1_D) / riskR : 0, f_untouchedLo(l1_W, lf_W) and l1_W < trigBear ? (trigBear - l1_W) / riskR : 0)
 
-        // ---- BULL side (break above) ----
-        okB = rwBullUp >= minRunwayR
-        f_line(xL, trigBull, xR, trigBull, cBull, line.style_solid, 2)
-        f_lab(xR, trigBull, "▲ " + patName + " trigger " + str.tostring(trigBull, format.mintick) +
-             (okB ? "  " + str.tostring(rwBullUp, "#.0") + "R" : "  (<" + str.tostring(minRunwayR, "#.0") + "R)"),
-             cBull, label.style_label_left)
-        f_line(xL, stopBull, xR, stopBull, cBear, line.style_dashed, 1)
-        f_lab(xR, stopBull, "stop " + str.tostring(stopBull, format.mintick), cBear, label.style_label_left)
-        f_line(xL, scaleBull, xR, scaleBull, cAmber, line.style_dotted, 1)
-        f_lab(xR, scaleBull, "+1R scale → BE " + str.tostring(scaleBull, format.mintick), cAmber, label.style_label_left)
+        okB = rwBullUp >= minRunwayR    // long side has runway
+        okS = rwBearUp >= minRunwayR    // short side has runway
 
-        // ---- BEAR side (break below) ----
-        okS = rwBearUp >= minRunwayR
+        // The inside bar's two EDGES, each drawn ONCE. The high is the long
+        // trigger AND the short's stop; the low is the short trigger AND the
+        // long's stop -- so the stop is noted inline, not as a colliding label.
+        rB = okB ? "  " + str.tostring(rwBullUp, "#.0") + "R" : "  <" + str.tostring(minRunwayR, "#.0") + "R"
+        rS = okS ? "  " + str.tostring(rwBearUp, "#.0") + "R" : "  <" + str.tostring(minRunwayR, "#.0") + "R"
+        f_line(xL, trigBull, xR, trigBull, cBull, line.style_solid, 2)
+        f_lab(xR, trigBull, "▲ long " + str.tostring(trigBull, format.mintick) + rB + "  · short stop",
+             cBull, label.style_label_left)
         f_line(xL, trigBear, xR, trigBear, cBear, line.style_solid, 2)
-        f_lab(xR, trigBear, "▼ " + patName + " trigger " + str.tostring(trigBear, format.mintick) +
-             (okS ? "  " + str.tostring(rwBearUp, "#.0") + "R" : "  (<" + str.tostring(minRunwayR, "#.0") + "R)"),
+        f_lab(xR, trigBear, "▼ short " + str.tostring(trigBear, format.mintick) + rS + "  · long stop",
              cBear, label.style_label_left)
-        f_line(xL, stopBear, xR, stopBear, cBull, line.style_dashed, 1)
-        f_lab(xR, stopBear, "stop " + str.tostring(stopBear, format.mintick), cBull, label.style_label_left)
-        f_line(xL, scaleBear, xR, scaleBear, cAmber, line.style_dotted, 1)
-        f_lab(xR, scaleBear, "+1R scale → BE " + str.tostring(scaleBear, format.mintick), cAmber, label.style_label_left)
+
+        // +1R scale → breakeven, only for a direction that actually has runway.
+        if okB
+            f_line(xL, scaleBull, xR, scaleBull, cAmber, line.style_dotted, 1)
+            f_lab(xR, scaleBull, "long +1R → BE " + str.tostring(scaleBull, format.mintick), cAmber, label.style_label_left)
+        if okS
+            f_line(xL, scaleBear, xR, scaleBear, cAmber, line.style_dotted, 1)
+            f_lab(xR, scaleBear, "short +1R → BE " + str.tostring(scaleBear, format.mintick), cAmber, label.style_label_left)
 
     // ---- runway rungs ----
     // Skip any rung below the setup TF when gatingOnly is on: those don't gate
