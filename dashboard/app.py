@@ -199,6 +199,9 @@ if not levels:
     st.caption(f"Scanner ran {gen} ET across {len(data.get('tickers', []))} tickers.")
     st.stop()
 
+# Score-slider ceiling from the actual scores present, so the range is useful.
+_max_score = max([(l.get("decision") or {}).get("score") or 0 for l in levels], default=1) or 1
+
 with st.sidebar:
     st.markdown("### Filter")
     # Options come from the scan's own setup_timeframes, so the board can never
@@ -222,6 +225,12 @@ with st.sidebar:
         help=f"How many of the {ftfc_n} watched frames "
              f"({', '.join(ftfc_tfs)}) agree with the trade.",
     )
+    score_min = st.slider(
+        "Min score", 0, int(_max_score), 0, 1,
+        help="The scanner's composite conviction rank (continuity + FTFC + "
+             "nesting + untouched rungs + compression, ×runway bonus) — what the "
+             "alert budget ranks by. Slide up to see only the top-scored setups.",
+    )
     st.caption(
         f"Every level shown already cleared the scanner's gates: runway ≥ "
         f"{min_runway:g}R, FTFC ≥ {min_ftfc_gate}/{ftfc_n}, hard 4H+1D "
@@ -240,6 +249,9 @@ def passes_quality(l) -> bool:
     if runway_min > 0 and (rw is None or rw < runway_min):
         return False
     if ftfc_min > 0 and (fa is None or fa < ftfc_min):
+        return False
+    sc = d.get("score")
+    if score_min > 0 and (sc is None or sc < score_min):
         return False
     return True
 
