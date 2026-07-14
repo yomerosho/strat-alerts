@@ -189,31 +189,8 @@ if levels and all(l.get("decision") is None and "scale_level" not in l for l in 
         'refresh latest_scan.json.</div>',
         unsafe_allow_html=True)
 
-n1 = sum(1 for l in levels if l["tier"] == "TIER1")
-n2 = sum(1 for l in levels if l["tier"] == "TIER2")
-
-st.markdown(f"""
-<div class="strip">
-  <span class="stat"><span class="k">Armed</span><span class="v">{len(levels)}</span></span>
-  <span class="stat"><span class="k">Tier 1 · live</span>
-    <span class="v {'amber' if n1 else 'zero'}">{n1}</span></span>
-  <span class="stat"><span class="k">Tier 2 · 15m</span>
-    <span class="v {'live' if n2 else 'zero'}">{n2}</span></span>
-  <span class="stat"><span class="k">Nominate</span>
-    <span class="v">{' / '.join(setup_tfs)}</span></span>
-  <span class="stat"><span class="k">Last scan</span><span class="v">{gen[-5:]}</span></span>
-</div>
-""", unsafe_allow_html=True)
-
-st.markdown("""
-<div class="legend">
-  <span><i style="background:rgba(255,107,98,.55)"></i>risk (stop → trigger)</span>
-  <span><i style="background:rgba(63,224,138,.5)"></i>runner (trigger → target)</span>
-  <span><i style="background:#fff;width:3px;border-radius:1px;"></i>trigger</span>
-  <span><i style="background:var(--amber);width:3px;border-radius:1px;"></i>+1R scale → breakeven</span>
-  <span><i style="background:var(--slate);border-radius:50%"></i>price now</span>
-</div>
-""", unsafe_allow_html=True)
+# Header strip + legend render AFTER filtering (below) so their counts reflect
+# what's actually on the board, not the unfiltered watchlist total.
 
 if not levels:
     st.markdown(f'<div class="card"><span class="setup">No inside bars on '
@@ -272,6 +249,34 @@ rows = [
     if l["setup_tf"] in tf_pick and l["tier"] in tier_pick and l["direction"] in dir_pick
     and abs(l["distance_pct"]) <= max_dist and passes_quality(l)
 ]
+
+# --- header + legend, now reflecting the FILTERED board ---
+n1 = sum(1 for l in rows if l["tier"] == "TIER1")
+n2 = sum(1 for l in rows if l["tier"] == "TIER2")
+shown, total = len(rows), len(levels)
+armed_v = (f"{shown}" if shown == total
+           else f"{shown}<span style='color:var(--faint);font-size:1.05rem'> / {total}</span>")
+st.markdown(f"""
+<div class="strip">
+  <span class="stat"><span class="k">Armed{' shown' if shown != total else ''}</span><span class="v">{armed_v}</span></span>
+  <span class="stat"><span class="k">Tier 1 · live</span>
+    <span class="v {'amber' if n1 else 'zero'}">{n1}</span></span>
+  <span class="stat"><span class="k">Tier 2 · 15m</span>
+    <span class="v {'live' if n2 else 'zero'}">{n2}</span></span>
+  <span class="stat"><span class="k">Nominate</span>
+    <span class="v">{' / '.join(setup_tfs)}</span></span>
+  <span class="stat"><span class="k">Last scan</span><span class="v">{gen[-5:]}</span></span>
+</div>
+""", unsafe_allow_html=True)
+st.markdown("""
+<div class="legend">
+  <span><i style="background:rgba(255,107,98,.55)"></i>risk (stop → trigger)</span>
+  <span><i style="background:rgba(63,224,138,.5)"></i>runner (trigger → target)</span>
+  <span><i style="background:#fff;width:3px;border-radius:1px;"></i>trigger</span>
+  <span><i style="background:var(--amber);width:3px;border-radius:1px;"></i>+1R scale → breakeven</span>
+  <span><i style="background:var(--slate);border-radius:50%"></i>price now</span>
+</div>
+""", unsafe_allow_html=True)
 
 if not rows:
     hidden = sum(1 for l in levels if not passes_quality(l))

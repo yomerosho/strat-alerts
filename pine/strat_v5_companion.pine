@@ -48,6 +48,13 @@ tblPos      = input.string("Top Right", "Table position", group = gFtfc,
 minFtfc     = input.int(4, "Min FTFC aligned (highlight)", group = gFtfc, minval = 0, maxval = 5)
 tblSizeIn   = input.string("Small", "Table text size", group = gFtfc, options = ["Tiny", "Small", "Normal", "Large", "Huge"])
 
+gSeq = "Setup-TF sequence"
+showSeq     = input.bool(true, "Show sequence table", group = gSeq,
+     tooltip = "The developing 3-bar Strat sequence on the setup timeframe "
+             + "(e.g. 3 - 1 - 2D) plus the break levels above/below.")
+seqPos      = input.string("Top Left", "Table position", group = gSeq,
+     options = ["Top Right", "Top Left", "Bottom Right", "Bottom Left", "Middle Right", "Middle Left"])
+
 gRun = "Magnitude / runway"
 showRunway  = input.bool(true,  "Untouched higher-TF rungs", group = gRun)
 gatingOnly  = input.bool(true,  "  └ only rungs at/above the setup TF", group = gRun,
@@ -266,6 +273,27 @@ if showFTFC and barstate.islast
     f_row(3, "4H", d240)
     f_row(4, "1D", dD)
     f_row(5, "1W", dW)
+
+// ----------------------------------------------------- sequence table ---------
+// The developing 3-bar Strat sequence on the setup TF: the bar before the
+// last one, the last CLOSED bar, and the FORMING bar -- e.g. 3 - 1 - 2D. Plus
+// the break levels (last closed setup bar's high/low), which for an inside bar
+// are exactly the two triggers.
+var table seqTbl = na
+if showSeq and barstate.islast
+    posS = seqPos == "Top Right" ? position.top_right : seqPos == "Top Left" ? position.top_left : seqPos == "Bottom Right" ? position.bottom_right : seqPos == "Bottom Left" ? position.bottom_left : seqPos == "Middle Right" ? position.middle_right : position.middle_left
+    if na(seqTbl)
+        seqTbl := table.new(posS, 2, 3, border_width = 1)
+    lab2 = f_label(sh2, sl2, sh3, sl3)     // bar before last
+    lab1 = f_label(sh1, sl1, sh2, sl2)     // last closed ("1" when armed)
+    lab0 = f_label(shf, slf, sh1, sl1)     // forming bar
+    cSeq = lab0 == "2U" ? cBull : lab0 == "2D" ? cBear : lab0 == "1" ? cAmber : color.new(#c4b5fd, 0)
+    table.cell(seqTbl, 0, 0, "SEQ " + setupTF, text_color = color.white, bgcolor = #243040, text_size = tblSize)
+    table.cell(seqTbl, 1, 0, lab2 + " - " + lab1 + " - " + lab0, text_color = cSeq, bgcolor = #243040, text_size = tblSize)
+    table.cell(seqTbl, 0, 1, "Break ▲", text_color = cDim, bgcolor = #18212c, text_size = tblSize)
+    table.cell(seqTbl, 1, 1, str.tostring(sh1, format.mintick), text_color = cBull, bgcolor = #18212c, text_size = tblSize)
+    table.cell(seqTbl, 0, 2, "Break ▼", text_color = cDim, bgcolor = #18212c, text_size = tblSize)
+    table.cell(seqTbl, 1, 2, str.tostring(sl1, format.mintick), text_color = cBear, bgcolor = #18212c, text_size = tblSize)
 
 // ----------------------------------------------- 15m Tier-2 confirmation ------
 // A 15m close through the active trigger = the entry. Only meaningful while a
