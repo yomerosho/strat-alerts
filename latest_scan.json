@@ -1,7 +1,7 @@
 {
-  "generated_at_utc": "2026-07-14T02:40:47.499420Z",
-  "generated_at_et": "2026-07-13T22:40:47.499437-04:00",
-  "version": 4,
+  "generated_at_utc": "2026-07-14T02:45:37.909019Z",
+  "generated_at_et": "2026-07-13T22:45:37.909029-04:00",
+  "version": 5,
   "tickers": [
     "SPY",
     "QQQ",
@@ -19,13 +19,20 @@
     "HOOD"
   ],
   "setup_timeframes": [
-    "2H",
-    "4H"
+    "4H",
+    "1D"
   ],
-  "tier1_timeframe": "5Min",
   "tier2_timeframe": "15Min",
   "proximity_alert_pct": 0.75,
-  "min_risk_reward": 1.0,
+  "min_runway_r": 2.0,
+  "min_ftfc": 4,
+  "ftfc_timeframes": [
+    "1H",
+    "2H",
+    "4H",
+    "1D",
+    "1W"
+  ],
   "armed_levels": [
     {
       "symbol": "AAPL",
@@ -38,19 +45,21 @@
       "invalidation": 315.9,
       "target": 323.45,
       "risk_reward": 3.06,
+      "scale_level": 319.62,
+      "runner_r": 3.06,
       "current_price": 317.81,
       "distance_pct": 0.017,
       "tier": "TIER1",
-      "tier1_time": "2026-07-13T22:40:28.577009-04:00",
+      "tier1_time": "2026-07-13T22:45:22.941869-04:00",
       "tier2_time": null,
       "setup_bar_time": "2026-07-13T13:30:00-04:00",
       "setup_bar_closes_at": null,
-      "minutes_to_next_15m": 5,
+      "minutes_to_next_15m": 15,
       "continuity": "5/5",
       "invalidated_by_opposite": false,
       "decision": {
         "passed": true,
-        "score": 10,
+        "score": 18,
         "runway_r": 3.06,
         "nearest_r": 3.06,
         "rungs": [
@@ -65,12 +74,20 @@
           "4H": true,
           "1D": true
         },
+        "ftfc": {
+          "1H": true,
+          "2H": true,
+          "4H": true,
+          "1D": true,
+          "1W": true
+        },
+        "ftfc_aligned": 5,
         "nested_tfs": [
           "4H"
         ],
         "compressed": true,
         "reasons": [
-          "pass: 1 gating rungs, nearest 3.1R, runway 3.1R, score 10"
+          "pass: 1 gating rungs, nearest 3.1R, runway 3.1R, score 18"
         ]
       }
     }
@@ -79,7 +96,7 @@
     {
       "symbol": "SPY",
       "price": 748.13,
-      "scanned_at": "2026-07-13T22:40:28.571079-04:00",
+      "scanned_at": "2026-07-13T22:45:22.939132-04:00",
       "timeframes": {
         "5Min": {
           "labels": [
@@ -167,7 +184,7 @@
     {
       "symbol": "QQQ",
       "price": 710.55,
-      "scanned_at": "2026-07-13T22:40:28.570524-04:00",
+      "scanned_at": "2026-07-13T22:45:22.941185-04:00",
       "timeframes": {
         "5Min": {
           "labels": [
@@ -255,7 +272,7 @@
     {
       "symbol": "IWM",
       "price": 292.95,
-      "scanned_at": "2026-07-13T22:40:28.570670-04:00",
+      "scanned_at": "2026-07-13T22:45:22.939370-04:00",
       "timeframes": {
         "5Min": {
           "labels": [
@@ -343,7 +360,7 @@
     {
       "symbol": "AAPL",
       "price": 317.81,
-      "scanned_at": "2026-07-13T22:40:28.577009-04:00",
+      "scanned_at": "2026-07-13T22:45:22.941869-04:00",
       "timeframes": {
         "5Min": {
           "labels": [
@@ -441,7 +458,7 @@
     {
       "symbol": "AMD",
       "price": 532.5,
-      "scanned_at": "2026-07-13T22:40:28.570815-04:00",
+      "scanned_at": "2026-07-13T22:45:22.939471-04:00",
       "timeframes": {
         "5Min": {
           "labels": [
@@ -548,7 +565,7 @@
     {
       "symbol": "AMZN",
       "price": 246.4,
-      "scanned_at": "2026-07-13T22:40:28.571193-04:00",
+      "scanned_at": "2026-07-13T22:45:22.942017-04:00",
       "timeframes": {
         "5Min": {
           "labels": [
@@ -636,7 +653,7 @@
     {
       "symbol": "GOOGL",
       "price": 353.1,
-      "scanned_at": "2026-07-13T22:40:28.571589-04:00",
+      "scanned_at": "2026-07-13T22:45:22.944113-04:00",
       "timeframes": {
         "5Min": {
           "labels": [
@@ -724,7 +741,7 @@
     {
       "symbol": "META",
       "price": 655.16,
-      "scanned_at": "2026-07-13T22:40:28.570951-04:00",
+      "scanned_at": "2026-07-13T22:45:22.944810-04:00",
       "timeframes": {
         "5Min": {
           "labels": [
@@ -831,7 +848,7 @@
     {
       "symbol": "MSFT",
       "price": 389.96,
-      "scanned_at": "2026-07-13T22:40:35.312993-04:00",
+      "scanned_at": "2026-07-13T22:45:28.971341-04:00",
       "timeframes": {
         "5Min": {
           "labels": [
@@ -919,7 +936,7 @@
     {
       "symbol": "NVDA",
       "price": 203.25,
-      "scanned_at": "2026-07-13T22:40:36.715777-04:00",
+      "scanned_at": "2026-07-13T22:45:29.061061-04:00",
       "timeframes": {
         "5Min": {
           "labels": [
@@ -1002,12 +1019,31 @@
           "last_bar": "2026-07-06T00:00:00-04:00"
         }
       },
-      "rejected": []
+      "rejected": [
+        {
+          "pattern": "2-1-2",
+          "setup_tf": "1D",
+          "direction": "bull",
+          "level": 210.57,
+          "reasons": [
+            "gate2: nearest gating rung 0.1R < 2.0R (1W 211.00 (0.1R))"
+          ]
+        },
+        {
+          "pattern": "2-1-2",
+          "setup_tf": "1D",
+          "direction": "bear",
+          "level": 203.0,
+          "reasons": [
+            "gate2: nearest gating rung 1.6R < 2.0R (1W 191.14 (1.6R))"
+          ]
+        }
+      ]
     },
     {
       "symbol": "PLTR",
       "price": 129.0,
-      "scanned_at": "2026-07-13T22:40:38.039443-04:00",
+      "scanned_at": "2026-07-13T22:45:29.576731-04:00",
       "timeframes": {
         "5Min": {
           "labels": [
@@ -1108,13 +1144,31 @@
           "reasons": [
             "gate2: nearest gating rung 0.7R < 2.0R (1D 126.19 (0.7R))"
           ]
+        },
+        {
+          "pattern": "2-1-2",
+          "setup_tf": "1D",
+          "direction": "bull",
+          "level": 130.72,
+          "reasons": [
+            "gate2: nearest gating rung 1.8R < 2.0R (1W 138.90 (1.8R))"
+          ]
+        },
+        {
+          "pattern": "2-1-2",
+          "setup_tf": "1D",
+          "direction": "bear",
+          "level": 126.19,
+          "reasons": [
+            "gate2: nearest gating rung 0.3R < 2.0R (1W 124.81 (0.3R))"
+          ]
         }
       ]
     },
     {
       "symbol": "TSLA",
       "price": 393.05,
-      "scanned_at": "2026-07-13T22:40:38.428155-04:00",
+      "scanned_at": "2026-07-13T22:45:29.983833-04:00",
       "timeframes": {
         "5Min": {
           "labels": [
@@ -1202,7 +1256,7 @@
     {
       "symbol": "SOFI",
       "price": 18.07,
-      "scanned_at": "2026-07-13T22:40:38.698665-04:00",
+      "scanned_at": "2026-07-13T22:45:30.862568-04:00",
       "timeframes": {
         "5Min": {
           "labels": [
@@ -1290,7 +1344,7 @@
     {
       "symbol": "HOOD",
       "price": 108.68,
-      "scanned_at": "2026-07-13T22:40:39.273815-04:00",
+      "scanned_at": "2026-07-13T22:45:31.090918-04:00",
       "timeframes": {
         "5Min": {
           "labels": [
@@ -1373,7 +1427,26 @@
           "last_bar": "2026-07-06T00:00:00-04:00"
         }
       },
-      "rejected": []
+      "rejected": [
+        {
+          "pattern": "3-1-2",
+          "setup_tf": "1D",
+          "direction": "bull",
+          "level": 113.7,
+          "reasons": [
+            "gate2: nearest gating rung 1.2R < 2.0R (1W 119.43 (1.2R))"
+          ]
+        },
+        {
+          "pattern": "3-1-2",
+          "setup_tf": "1D",
+          "direction": "bear",
+          "level": 108.84,
+          "reasons": [
+            "gate2: nearest gating rung 0.0R < 2.0R (1W 108.81 (0.0R))"
+          ]
+        }
+      ]
     }
   ]
 }
