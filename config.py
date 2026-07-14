@@ -3,10 +3,11 @@ config.py
 ---------
 Central configuration.
 
-The big v4 changes:
-  - setup_timeframes is 2H/4H ONLY. Nothing arms on 15m or below anymore.
-  - Confirmation happens on 5Min (Tier 1) and 15Min (Tier 2).
-  - Continuity is context on the alert, not a hard gate by default.
+The v5 model:
+  - setup_timeframes is 4H/1D. Only these two nominate; 2H is demoted.
+  - Confirmation is 15Min only (Tier 2). The 5-minute tier is gone.
+  - Continuity is a HARD gate: FTFC >= min_ftfc across 1H/2H/4H/1D/1W, plus
+    the runway gate (nearest rung >= min_runway_r). R:R no longer gates.
 """
 
 from __future__ import annotations
