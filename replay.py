@@ -80,6 +80,7 @@ class Signal:
     direction: str
     trigger: float
     stop: float
+    entry_price: float     # the ACTUAL fill (15m close, through the trigger)
     target: float          # first gating rung
     runway_r: float
     score: int
@@ -132,8 +133,15 @@ def scan_at(
     labeled: dict[str, pd.DataFrame],
     now_et: pd.Timestamp,
     apply_gates: bool = True,
+    min_ftfc: Optional[int] = None,
 ) -> list[ArmedLevel]:
-    """One scan cycle, as of `now_et`. Mirrors StratScanner.scan_symbol."""
+    """
+    One scan cycle, as of `now_et`. Mirrors StratScanner.scan_symbol.
+
+    min_ftfc overrides the Gate 3b threshold -- pass 0 from an experiment that
+    wants to sweep FTFC itself and therefore must see the pre-FTFC signals.
+    None uses magnitude's default.
+    """
     closed_by_tf, forming_by_tf = state_at(labeled, now_et)
 
     df5 = labeled["5Min"]
@@ -158,11 +166,13 @@ def scan_at(
     if not armed:
         return []
 
+    ftfc_kw = {} if min_ftfc is None else {"min_ftfc": min_ftfc}
     for lv in armed:
         lv.decision = magnitude.evaluate(
             closed_by_tf, forming_by_tf,
             setup_tf=lv.setup_tf, direction=lv.direction,
             trigger=lv.level, invalidation=lv.invalidation,
+            **ftfc_kw,
         )
         if lv.decision.passed and lv.decision.rungs:
             lv.target = lv.decision.gate_rungs[0].level
@@ -189,10 +199,13 @@ def resolve(sig: Signal, df5: pd.DataFrame, entry_time: pd.Timestamp) -> Signal:
         take half off at +1R, pull the stop to breakeven, run the rest to the
         first gating rung (sig.target).
 
-    This is the exit chosen after the exit_sweep experiment: on the v5 entries
-    it scored ~88% win at +1.32R/trade, versus 43% / +2.66R for "let it all run
-    to the rung". The mechanism is simple -- once +1R is banked and the stop is
-    at breakeven, the runner can only WIN or SCRATCH, never lose a full R.
+    This is the exit chosen after the exit_sweep experiment. R is measured from
+    the ACTUAL fill (sig.entry_price -- the 15m close that confirmed), NOT the
+    trigger. That distinction matters enormously: measuring from the trigger
+    gives every long a free head start toward its +1R target and inflated the
+    win rate to a fictional 92%. From the fill it is ~74-76% -- lower, real, and
+    still strongly positive. The mechanism is unchanged: once +1R is banked and
+    the stop is at breakeven, the runner can only WIN or SCRATCH, never lose.
 
     Tiebreaks:
       * The +1R scale is a resting LIMIT: if a bar's range reaches +1R the half
@@ -205,7 +218,8 @@ def resolve(sig: Signal, df5: pd.DataFrame, entry_time: pd.Timestamp) -> Signal:
     after scaling never triggered; r_realized is the blended R across both
     halves.
     """
-    risk = abs(sig.trigger - sig.stop)
+    entry = sig.entry_price or sig.trigger    # fill; fall back to trigger if unset
+    risk = abs(entry - sig.stop)
     if risk <= 0:
         sig.outcome = "INVALID"
         return sig
@@ -219,7 +233,7 @@ def resolve(sig: Signal, df5: pd.DataFrame, entry_time: pd.Timestamp) -> Signal:
     forward = forward[forward.index <= deadline]
 
     bull = sig.direction == BULL
-    target_R = abs(sig.target - sig.trigger) / risk
+    target_R = abs(sig.target - entry) / risk
 
     stop = sig.stop        # trails to breakeven after the scale
     banked = 0.0           # R locked from the scaled-out half
@@ -238,13 +252,13 @@ def resolve(sig: Signal, df5: pd.DataFrame, entry_time: pd.Timestamp) -> Signal:
     for i, (ts, bar) in enumerate(forward.iterrows(), start=1):
         hi, lo = float(bar["high"]), float(bar["low"])
         if bull:
-            fav = (hi - sig.trigger) / risk
-            mae = min(mae, (lo - sig.trigger) / risk)
+            fav = (hi - entry) / risk
+            mae = min(mae, (lo - entry) / risk)
             hit_stop = lo <= stop
             hit_target = hi >= sig.target
         else:
-            fav = (sig.trigger - lo) / risk
-            mae = min(mae, (sig.trigger - hi) / risk)
+            fav = (entry - lo) / risk
+            mae = min(mae, (entry - hi) / risk)
             hit_stop = hi >= stop
             hit_target = lo <= sig.target
         mfe = max(mfe, fav)
@@ -253,7 +267,7 @@ def resolve(sig: Signal, df5: pd.DataFrame, entry_time: pd.Timestamp) -> Signal:
         if not moved_be and fav >= 1.0:
             banked = 0.5 * 1.0
             weight = 0.5
-            stop = sig.trigger
+            stop = entry               # breakeven = the actual fill
             moved_be = True
             if hit_target:                       # +1R and rung in the same bar
                 return _done("WIN", banked + weight * target_R, i, ts)
@@ -317,6 +331,7 @@ def replay_symbol(
                 direction=lv.direction,
                 trigger=round(lv.level, 2),
                 stop=round(lv.invalidation, 2),
+                entry_price=round(lv.current_price, 2),
                 target=round(lv.target, 2),
                 runway_r=round(d.runway_r, 2) if d else 0.0,
                 score=d.score if d else 0,

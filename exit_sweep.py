@@ -48,7 +48,9 @@ def collect_signals(provider: BarProvider, symbol: str):
     fired = set()
     for bar_end in df15["bar_end"]:
         now = pd.Timestamp(bar_end)
-        for lv in replay.scan_at(symbol, labeled, now, apply_gates=True):
+        # min_ftfc=0: the exit experiment predates the FTFC gate and is judged
+        # on the pre-FTFC entry set, so it must not be filtered by it.
+        for lv in replay.scan_at(symbol, labeled, now, apply_gates=True, min_ftfc=0):
             if lv.tier != replay.TIER2 or lv.tier2_time != now:
                 continue
             if lv.key in fired or lv.target is None or lv.invalidation is None:

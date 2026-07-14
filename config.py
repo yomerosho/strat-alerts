@@ -125,6 +125,16 @@ class Config:
         default_factory=lambda: float(os.getenv("MIN_RUNWAY_R") or "2.0")
     )
 
+    # Gate 3b: Full Timeframe Continuity. Require at least `min_ftfc` of the
+    # watched frames to be trading in the trade's direction at entry. Validated
+    # on a 208-trade / 14-symbol replay (R measured from the ACTUAL fill, not
+    # the trigger): no gate 73.6% win / +0.59R, >=4/5 75.8% / +0.66R keeping
+    # 180 trades, >=5/5 80.3% / +0.88R but only 79 trades. 4/5 is the balanced
+    # point -- nearly all the frequency, a real quality bump. This sits ON TOP
+    # of the 4H+1D hard-continuity gate (magnitude.CONTINUITY_TFS).
+    ftfc_timeframes: tuple[str, ...] = ("1H", "2H", "4H", "1D", "1W")
+    min_ftfc: int = field(default_factory=lambda: int(os.getenv("MIN_FTFC") or "4"))
+
     # Gate 5: hard cap on alerts per scan, across the whole watchlist, ranked by
     # score. Crude on purpose -- it forces the ranking to do real work and keeps
     # the feed small enough that you READ it instead of tuning it out.
