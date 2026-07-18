@@ -140,7 +140,7 @@ class Config:
     # score. Crude on purpose -- it forces the ranking to do real work and keeps
     # the feed small enough that you READ it instead of tuning it out.
     alert_budget: int = field(
-        default_factory=lambda: int(os.getenv("ALERT_BUDGET") or "10")
+        default_factory=lambda: int(os.getenv("ALERT_BUDGET") or "20")
     )
 
     # --- Failed-2 ---
