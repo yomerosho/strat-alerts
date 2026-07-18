@@ -35,6 +35,15 @@ logger = logging.getLogger("strat_scanner.main")
 TIER_RANK = {ARMED: 0, TIER1: 1, TIER2: 2}
 
 
+class ScanFailed(RuntimeError):
+    """Every symbol failed, so this cycle learned nothing about the market.
+
+    Distinct from "the market is quiet". A quiet market produces snapshots with
+    no armed levels; a broken scan produces no snapshots at all. Conflating the
+    two is how a dead scanner passes for a calm morning.
+    """
+
+
 def setup_logging() -> None:
     logging.basicConfig(
         level=getattr(logging, CONFIG.log_level.upper(), logging.INFO),
@@ -167,6 +176,37 @@ async def scan_cycle(
         all_levels.extend(levels)
         if snap:
             snapshots.append(snap)
+
+    # --- Did this cycle actually see the market? ---
+    #
+    # process_symbol swallows every per-symbol exception so one bad ticker can't
+    # sink the scan. The cost is that a TOTAL failure -- expired Alpaca keys, the
+    # data API down, no network -- looks exactly like a calm market: no
+    # snapshots, no armed levels, exit 0, green check. That is what happened on
+    # 2026-07-18: the keys in CI started returning 401, and 30-plus consecutive
+    # runs reported success while publishing an empty scan over a good one and
+    # sending no alerts.
+    #
+    # So: if nothing came back, raise BEFORE write_snapshot. Two things follow.
+    # The last good latest_scan.json stays on disk, so the dashboards keep
+    # showing the most recent real data instead of being blanked. And the step
+    # exits non-zero, which fails the workflow -- the commit step has no `if:`,
+    # so it defaults to success() and is skipped, meaning nothing is committed.
+    failed = len(tickers) - len(snapshots)
+    if tickers and not snapshots:
+        raise ScanFailed(
+            f"all {len(tickers)} symbols failed to return data -- not writing a "
+            f"snapshot (keeping the last good one). Check the per-symbol "
+            f"tracebacks above: a 401 means the Alpaca credentials are bad."
+        )
+    if failed:
+        # Partial failure still publishes -- a few dead symbols shouldn't blank
+        # the board -- but it must be visible, because this is what a total
+        # failure looks like on its way in.
+        logger.warning(
+            "%d/%d symbols returned no data; publishing the remaining %d.",
+            failed, len(tickers), len(snapshots),
+        )
 
     # --- Freshness gate + Gate 5 (budget), across the whole watchlist ---
     # Only levels with a FRESH tier to announce compete for the budget. A level
@@ -395,6 +435,13 @@ def main() -> None:
             asyncio.run(run_service(args.dry_run))
     except KeyboardInterrupt:
         logger.info("Shutting down.")
+    except ScanFailed as e:
+        # Exit non-zero so CI goes red instead of committing an empty scan.
+        # In the long-running service this ends the process; a systemd unit
+        # with Restart=on-failure will bring it back and retry the next cycle,
+        # which is the right response to "the data source just went away".
+        logger.error("SCAN FAILED: %s", e)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
