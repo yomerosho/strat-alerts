@@ -1,159 +1,76 @@
-SPY
-QQQ
+# The watchlist. One symbol per line. Blank lines and lines starting with #
+# are ignored (config.load_tickers).
+#
+# NOTE: only WHOLE-LINE comments work. load_tickers does `line.strip().upper()`
+# and checks startswith("#") -- it does not strip a trailing comment, so
+# "MSTR  # crypto" is read as the symbol "MSTR  # CRYPTO" and sent to Alpaca
+# verbatim. Keep labels on their own lines, as below.
+#
+# CAVEAT: `python main.py --add-ticker X` rewrites this file from the parsed
+# symbol list, which drops every comment. Edit by hand to keep them.
+#
+# Two groups, and the split is deliberate:
+#
+# 1. DAILY -- what actually gets traded. Watched because they're the book, not
+#    because they're representative.
+#
+# 2. SECTOR SENTINELS -- one name per sector, to see what's happening
+#    elsewhere. Picked as the most liquid name in each sector by 20-day average
+#    dollar volume (measured 2026-07-18), not alphabetically: the point is the
+#    name that leads its sector's tape, so a rotation shows up here first.
+#    Sectors whose leader is already in the daily list (indices -> SPY, mega cap
+#    tech -> NVDA) contribute nothing extra.
+#
+# Trimmed from 158 to 29 on 2026-07-18. Fewer symbols means the alert budget
+# ranks a tighter field, and each scan is ~5x fewer Alpaca requests.
+
+# ---------------- daily ----------------
 IWM
-CLSK
-COIN
-HUT
-MARA
-MSTR
-RIOT
+QQQ
+SPY
 AAPL
 AMZN
 GOOGL
 META
 MSFT
 NVDA
-TSLA
-AMAT
-AMD
-ARM
 AVGO
-INTC
-KLAC
-LRCX
-MRVL
-MU
-ON
-QCOM
-SMCI
-TSM
-ADBE
-CRM
-CRWD
-CSCO
-DDOG
-DOCU
-IBM
-NET
-NOW
-OKTA
-ORCL
-PANW
 PLTR
-SHOP
-SNOW
-TTWO
-TWLO
-U
-ZM
-ZS
-APP
-CRWV
-IOT
+TSLA
+
+# ------- sector sentinels (most liquid in sector) -------
+
+# crypto
+MSTR
+# semiconductors
+MU
+# software & cloud
+ORCL
+# AI & data
 NBIS
-TEM
-AFRM
-BAC
-C
-GS
-HOOD
+# fintech & payment
 JPM
-MA
-MS
-PYPL
-RKT
-SCHW
-SOFI
-UPST
-V
-WFC
+# e-commerce
 BABA
-BIDU
-EBAY
-ETSY
-FVRR
-JD
-CAVA
-CHWY
+# retail
 COST
-DECK
-DKS
-ELF
-GME
-MCD
-NKE
-ONON
-RH
-SBUX
-SHAK
-WMT
-YETI
-DIS
+# streaming
 NFLX
-PINS
-RDDT
-RBLX
-ROKU
-SNAP
-SPOT
-TTD
-ABNB
-CCL
-DASH
-EXPE
-SE
+# travel
 UBER
-ABBV
-ABT
-BNTX
-CELH
-CVS
-FLGT
-HIMS
-ISRG
-LMND
+# healthcare & biotech
 LLY
-MRNA
-OSCR
-TDOC
-UNH
-ACN
-BA
+# industrial & defense
 CAT
-GE
-HON
-LMT
-NOC
-RTX
-UPS
-WM
-CVX
-OXY
+# energy & oil
 XOM
-CCJ
-FCEL
-FSLR
+# clean energy
 IONQ
-NRG
-OKLO
-RUN
-SMR
-F
-GM
-LI
+# EV & auto
 RIVN
-DELL
-HPQ
-LOGI
-VRT
+# hardware & devices
 WDC
-ASTS
-LUNR
+# space & emerging tech
 RKLB
+# other
 CVNA
-DKNG
-MGM
-TSLL
-XYZ
-
-
