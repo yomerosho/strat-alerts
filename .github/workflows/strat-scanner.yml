@@ -45,13 +45,29 @@ jobs:
           LOG_LEVEL: INFO
         run: python main.py --once
 
+      - name: F2D-Deep forward tracker
+        # Records new F2D-Deep signals, resolves finished trade windows, and
+        # sends resolution alerts. Morning BUY-plan alerts come from the
+        # premarket workflow (this job only starts after the open, so it
+        # records without re-alerting). Never let a tracker hiccup kill the
+        # scan's state commit below.
+        continue-on-error: true
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          ALPACA_DATA_FEED: ${{ secrets.ALPACA_DATA_FEED }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          LOG_LEVEL: INFO
+        run: python f2d_tracker.py
+
       - name: Persist alert-dedup state
         # The runner is a fresh VM each time. sent_alerts must survive between
         # runs or you'd get a duplicate alert every 5 minutes.
         run: |
           git config user.name  "strat-scanner-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add scanner_state.db tickers.txt latest_scan.json
+          git add scanner_state.db tickers.txt latest_scan.json f2d_forward.json
           if ! git diff --cached --quiet; then
             git commit -m "scan state [skip ci]"
             git pull --rebase origin "${GITHUB_REF_NAME}"
