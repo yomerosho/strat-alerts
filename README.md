@@ -59,10 +59,14 @@ bar is an inside bar; **both edges arm** (high → long, low → short). Trigger
 a close beyond the edge; stop = the opposite edge (usually a tight range, which
 is what makes the R math work). The name is just the bar before the `1`.
 
-**Family B — Failed-2 (F2U / F2D).** The only setup that arms mid-bar. The
+**Family B — Failed-2 (F2D / F2U).** The only setup that arms mid-bar. The
 forming bar pokes through the prior bar's extreme, then fails back through it,
 trapping the breakout crowd. Trigger = a close back inside; stop = the failed
 extreme. F2s move fast — they treat **Tier 1 as actionable**, not a heads-up.
+
+An F2 is named for the move that **failed**, not for the trade it produces:
+`F2D` = failed to go down → traps the shorts → **long**; `F2U` = failed to go
+up → traps the longs → **short**. Same convention as the F2D-Deep tracker.
 
 *(v4's 3-2-2, 1-2-2 Rev Strat, and PMG are gone — they aren't in the v5 model.)*
 

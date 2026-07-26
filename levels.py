@@ -31,9 +31,17 @@ FAMILY A -- inside-bar setups (2-1-2, 3-1-2, 1-1-2)
         high -> bullish breakout,  low -> bearish breakdown
     Trigger = close BEYOND the level (breakout).
 
-FAMILY B -- Failed 2 (F2U / F2D)
+FAMILY B -- Failed 2 (F2D / F2U)
     Arms off the CURRENTLY FORMING setup bar, referencing the prior closed one.
     Trigger = close BACK INSIDE the level (reversal).
+
+    NAMING: an F2 is named for the move that FAILED, not for the trade.
+        F2D = failed to go DOWN -> the breakdown trapped shorts -> LONG
+        F2U = failed to go UP   -> the breakout trapped longs   -> SHORT
+    This matches f2d_tracker.py (F2D-Deep is a long) and the research in
+    research/strat_patterns/. It was inverted here until 2026-07-26; only
+    the label was ever wrong -- direction, trigger and stop have always
+    been derived from the geometry below, never from the name.
 
 That direction difference is why `trigger_side` is an explicit field rather
 than something derived from `direction`. Family A closes away from the level;
@@ -358,12 +366,13 @@ def arm_failed_two(
 
     out: list[ArmedLevel] = []
 
-    # --- F2D: poked above prior high, now back below -> trapped longs ---
+    # --- F2U: the 2U attempt FAILED. Poked above the prior high, now back
+    #     below it -- the breakout longs are trapped. Failed up => short. ---
     if float(forming["high"]) > prior_high and current_price <= prior_high:
         breaches = inner[inner["high"] > prior_high]
         if not breaches.empty:
             out.append(ArmedLevel(
-                symbol=symbol, setup_tf=setup_tf, family=FAMILY_F2, pattern="F2D",
+                symbol=symbol, setup_tf=setup_tf, family=FAMILY_F2, pattern="F2U",
                 direction=BEAR, trigger_side="below", level=prior_high,
                 invalidation=float(forming["high"]),
                 target=prior_low,
@@ -373,12 +382,13 @@ def arm_failed_two(
                 setup_bar_closes_at=forming["bar_end"],
             ))
 
-    # --- F2U: poked below prior low, now back above -> trapped shorts ---
+    # --- F2D: the 2D attempt FAILED. Poked below the prior low, now back
+    #     above it -- the breakdown shorts are trapped. Failed down => long. ---
     if float(forming["low"]) < prior_low and current_price >= prior_low:
         breaches = inner[inner["low"] < prior_low]
         if not breaches.empty:
             out.append(ArmedLevel(
-                symbol=symbol, setup_tf=setup_tf, family=FAMILY_F2, pattern="F2U",
+                symbol=symbol, setup_tf=setup_tf, family=FAMILY_F2, pattern="F2D",
                 direction=BULL, trigger_side="above", level=prior_low,
                 invalidation=float(forming["low"]),
                 target=prior_high,

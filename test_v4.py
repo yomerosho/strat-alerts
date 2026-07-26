@@ -206,7 +206,7 @@ df5b = pd.concat([df5, extra]).sort_index()
 bars15 = resample_session(df5b, 15)
 
 bull2 = arm_inside_bar("TEST", "4H", closed4, forming4, 109.0)[0]
-evaluate_tiers(bull2, df5b, bars15, now)
+evaluate_tiers(bull2, bars15, now)
 
 check("5m close above 108 -> promoted past ARMED", bull2.tier != ARMED, bull2.tier)
 check("TIER2 reached (15m also closed above)", bull2.tier == TIER2, bull2.tier)
@@ -216,7 +216,7 @@ check("distance_pct positive when through", bull2.distance_pct > 0, f"{bull2.dis
 
 # A level whose confirming close came BEFORE arm_time must not count
 bear2 = arm_inside_bar("TEST", "4H", closed4, forming4, 109.0)[1]
-evaluate_tiers(bear2, df5b, bars15, now)
+evaluate_tiers(bear2, bars15, now)
 check("bear side did NOT trigger (price went up)", bear2.tier == ARMED, bear2.tier)
 
 
@@ -251,21 +251,25 @@ check("prior 4H bar high is 110", float(closed4f["high"].iloc[-1]) == 110.0)
 check("forming 4H bar poked to 112", float(forming4f["high"]) == 112.0)
 
 lv = arm_failed_two("TEST", "4H", closed4f, forming4f, df5f, current_price=108.0)
-check("F2D armed", len(lv) == 1 and lv[0].pattern == "F2D", str([x.pattern for x in lv]))
+# The poke was ABOVE the prior high and it did not hold, so the move that
+# FAILED was the 2U -> F2U, and the trade is the short.
+check("F2U armed", len(lv) == 1 and lv[0].pattern == "F2U", str([x.pattern for x in lv]))
 
-f2d = lv[0]
-check("F2D level = prior bar high", f2d.level == 110.0, str(f2d.level))
-check("F2D trigger_side is 'below' (reversal, not breakout)", f2d.trigger_side == "below")
-check("F2D direction bear", f2d.direction == "bear")
+f2u = lv[0]
+check("F2U level = prior bar high", f2u.level == 110.0, str(f2u.level))
+check("F2U trigger_side is 'below' (reversal, not breakout)", f2u.trigger_side == "below")
+check("F2U direction bear", f2u.direction == "bear")
 check("arm_time is the BREACH bar's end (13:40), not the setup bar start",
-      f2d.arm_time == pd.Timestamp(f"{d} 13:40", tz=ET), str(f2d.arm_time))
+      f2u.arm_time == pd.Timestamp(f"{d} 13:40", tz=ET), str(f2u.arm_time))
 
 bars15f = resample_session(df5f, 15)
-evaluate_tiers(f2d, df5f, bars15f, now_f2)
-check("F2D promoted to TIER1 by the 13:40 close below 110",
-      f2d.tier in (TIER1, TIER2), f2d.tier)
-check("tier1_time is 13:45 (end of the 13:40 bar), after the breach",
-      f2d.tier1_time == pd.Timestamp(f"{d} 13:45", tz=ET), str(f2d.tier1_time))
+evaluate_tiers(f2u, bars15f, now_f2)
+check("F2U promoted to TIER1 by the 13:40 close below 110",
+      f2u.tier in (TIER1, TIER2), f2u.tier)
+# v5 derives Tier 1 from LIVE price, not from a closed 5m bar, so tier1_time
+# is the scan time -- the moment price was through -- not the bar that did it.
+check("tier1_time is the scan time (v5 Tier 1 is live, not a 5m close)",
+      f2u.tier1_time == now_f2, str(f2u.tier1_time))
 
 
 # ==========================================================================

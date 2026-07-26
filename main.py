@@ -303,7 +303,7 @@ async def run_service(dry_run: bool) -> None:
 SAMPLE_TIERS = [
     ("ARM", ARMED, FAMILY_INSIDE, "2-1-2", "bull", "above", 412.50, 408.10, 418.20, 411.05),
     ("TIER 1", TIER1, FAMILY_INSIDE, "2-1-2", "bull", "above", 412.50, 408.10, 418.20, 413.80),
-    ("TIER 1 (F2)", TIER1, FAMILY_F2, "F2D", "bear", "below", 184.20, 185.90, 178.40, 183.55),
+    ("TIER 1 (F2)", TIER1, FAMILY_F2, "F2U", "bear", "below", 184.20, 185.90, 178.40, 183.55),
     ("TIER 2", TIER2, FAMILY_INSIDE, "3-1-2", "bear", "below", 295.75, 296.47, 293.62, 294.90),
 ]
 

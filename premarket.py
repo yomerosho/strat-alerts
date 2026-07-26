@@ -19,8 +19,8 @@ so you know whether the set-up is with-trend or fighting it.
 The prior 4H and Daily highs/lows are fixed and known before the bell. Premarket
 price relative to those levels determines what the 09:30 bar opens as:
 
-    premarket ABOVE the prior high  -> opens as a 2U attempt; fail back = F2D.
-    premarket BELOW the prior low   -> opens as a 2D attempt; reclaim = F2U.
+    premarket ABOVE the prior high  -> opens as a 2U attempt; fail back = F2U.
+    premarket BELOW the prior low   -> opens as a 2D attempt; reclaim = F2D.
     premarket INSIDE the range      -> opens as a 1; watch the edges.
 
 Plus: any inside bar that closed yesterday (4H or Daily) is armed from the first
@@ -80,10 +80,10 @@ def _tf_map(prior: pd.Series, ref: float) -> dict:
     lab = prior["label"] if isinstance(prior["label"], str) else "?"
     if ref > hi:
         return dict(high=hi, low=lo, label=lab, opens_as="2U",
-                    f2="F2D", trigger=hi, inside=lab == "1")
+                    f2="F2U", trigger=hi, inside=lab == "1")
     if ref < lo:
         return dict(high=hi, low=lo, label=lab, opens_as="2D",
-                    f2="F2U", trigger=lo, inside=lab == "1")
+                    f2="F2D", trigger=lo, inside=lab == "1")
     return dict(high=hi, low=lo, label=lab, opens_as="1",
                 f2=None, trigger=None, inside=lab == "1")
 
@@ -105,11 +105,11 @@ def _stack_bias(closed_by_tf: dict) -> tuple[int, int]:
 
 
 def _trend_note(f2: Optional[str], bull: int, total: int) -> str:
-    """Does the stack support the set-up F2 direction? F2U is bullish, F2D
-    bearish."""
+    """Does the stack support the set-up F2 direction? An F2 is named for the
+    move that failed, so F2D (failed down) is bullish and F2U is bearish."""
     if f2 is None or total == 0:
         return ""
-    agree = bull if f2 == "F2U" else (total - bull)
+    agree = bull if f2 == "F2D" else (total - bull)
     if agree >= 4:
         return "with-trend ✓"
     if agree <= 1:
@@ -187,7 +187,7 @@ def _tf_line(tag: str, m: dict, bull: int, total: int) -> Optional[str]:
     if m["f2"]:
         note = _trend_note(m["f2"], bull, total)
         note = f"  {note}" if note else ""
-        fail = "fail back below" if m["f2"] == "F2D" else "reclaim"
+        fail = "fail back below" if m["f2"] == "F2U" else "reclaim"
         dbl = "  (also the breakout trigger)" if m["inside"] else ""
         return (f"    {tag} opens `{m['opens_as']}` · *{m['f2']}* at "
                 f"`{m['trigger']:.2f}` ({fail}){dbl}{note}")

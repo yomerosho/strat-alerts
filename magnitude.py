@@ -74,7 +74,7 @@ ALERT_BUDGET: int = 3
 # F2 sets its invalidation at the FORMING bar's extreme. When the poke through
 # the prior bar's high is tiny -- a few cents -- risk collapses toward zero,
 # every R-multiple explodes toward infinity, and the setup rockets to the top of
-# the alert ranking on pure arithmetic. Observed in replay: a 4H F2D on a $493
+# the alert ranking on pure arithmetic. Observed in replay: a 4H F2U on a $493
 # underlying with a 3-cent stop and a "233R runway", scoring higher than every
 # genuine setup in the sample.
 #

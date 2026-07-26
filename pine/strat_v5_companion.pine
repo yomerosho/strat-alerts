@@ -9,12 +9,11 @@
 //   * Inside-bar arming off the last CLOSED setup bar -> levels.arm_inside_bar
 //   * Failed 2 exactly as the scanner defines it: the FORMING setup bar pokes
 //     through the prior CLOSED bar's extreme and price comes back inside.
-//     Trigger = the prior bar's extreme, stop = the poke extreme. Naming
-//     follows levels.py / the Telegram alerts (trade direction):
-//         F2D = poke ABOVE prior high failed -> SHORT (trapped longs)
-//         F2U = poke BELOW prior low  failed -> LONG  (trapped shorts)
-//     (Note: f2d_tracker's "F2D-Deep" names it by which 2 failed, so DEEP is
-//     a LONG. The DEEP block below is labelled explicitly to avoid confusion.)
+//     Trigger = the prior bar's extreme, stop = the poke extreme. An F2 is
+//     named for the move that FAILED, not for the trade it produces:
+//         F2D = failed to go DOWN (poke below the prior low reclaimed) -> LONG
+//         F2U = failed to go UP   (poke above the prior high lost)     -> SHORT
+//     Same convention as f2d_tracker.py, so F2D-Deep is consistently a long.
 //                                                     -> levels.arm_failed_two
 //   * Gate 2a minimum viable risk (0.15% of price)    -> magnitude.MIN_RISK_PCT
 //   * Gate 2: nearest untouched gating rung >= min R  -> magnitude.evaluate
@@ -57,7 +56,7 @@ drawLen     = input.int(60,     "Draw levels back this many bars", group = gSetu
 
 gForm = "Formations (what arms a trigger)"
 armInside = input.bool(true,  "Inside bar (x-1-2) — both edges", group = gForm)
-armF2     = input.bool(true,  "Failed 2 — mid-bar trap (F2D short / F2U long)", group = gForm,
+armF2     = input.bool(true,  "Failed 2 — mid-bar trap (F2D long / F2U short)", group = gForm,
      tooltip = "The scanner's Family B. The FORMING 4H/1D bar pokes through the prior closed "
              + "bar's extreme and price falls back inside: trapped traders. Trigger is the "
              + "prior bar's extreme (a close back through it), stop is the poke extreme. "
@@ -182,20 +181,20 @@ patD = h2_Ds > h3_Ds and l2_Ds < l3_Ds ? "3-1-2" : (h2_Ds > h3_Ds or l2_Ds < l3_
 //     stop = the forming bar's poke extreme. Risk is the poke depth, NOT the
 //     bar range -- this is what makes F2 geometry different from x-1-2.
 f_armSide(lab1c, h1, l1, hf, lf, patName) =>
-    f2d = armF2 and hf > h1 and close <= h1     // poked above prior high, back inside -> short
-    f2u = armF2 and lf < l1 and close >= l1     // poked below prior low,  back inside -> long
+    f2u = armF2 and hf > h1 and close <= h1     // failed 2U: poked above the prior high, back inside -> SHORT
+    f2d = armF2 and lf < l1 and close >= l1     // failed 2D: poked below the prior low,  back inside -> LONG
     ins = armInside and lab1c == "1"
     out = armOut and lab1c == "3"
     cB  = armCont and lab1c == "2U"
     cS  = armCont and lab1c == "2D"
-    armB  = f2u or ins or out or cB
-    trigB = f2u ? l1 : h1
-    stopB = f2u ? lf : l1
-    patB  = f2u ? "F2U" : ins ? patName : out ? "3-2U" : "2U-2U"
-    armS  = f2d or ins or out or cS
-    trigS = f2d ? h1 : l1
-    stopS = f2d ? hf : h1
-    patS  = f2d ? "F2D" : ins ? patName : out ? "3-2D" : "2D-2D"
+    armB  = f2d or ins or out or cB
+    trigB = f2d ? l1 : h1
+    stopB = f2d ? lf : l1
+    patB  = f2d ? "F2D" : ins ? patName : out ? "3-2U" : "2U-2U"
+    armS  = f2u or ins or out or cS
+    trigS = f2u ? h1 : l1
+    stopS = f2u ? hf : h1
+    patS  = f2u ? "F2U" : ins ? patName : out ? "3-2D" : "2D-2D"
     [armB, trigB, stopB, patB, armS, trigS, stopS, patS]
 
 [aB0, aTB, aSB, aPB, aS0, aTS, aSS, aPS] = f_armSide(lab4, h1_4s, l1_4s, hf_4s, lf_4s, pat4)
