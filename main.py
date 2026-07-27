@@ -153,8 +153,19 @@ async def send_level(
             print(message)
         else:
             logger.info("ALERT %s %s %s %s", tier, lv.symbol, lv.setup_tf, lv.pattern)
-            await alerts.send(message)
-            store.mark_sent(lv.key, tier)
+            # Only record as sent if Telegram actually accepted it. Marking on a
+            # FAILED send (the old behaviour) stamped it done, blocked the retry,
+            # and lost the alert silently -- the store looked healthy while the
+            # phone stayed quiet. A miss now retries next scan (still inside the
+            # freshness window); if it keeps failing past that window it drops,
+            # which is correct -- a late alert on a run move is worse than none.
+            if await alerts.send(message):
+                store.mark_sent(lv.key, tier)
+            else:
+                logger.warning(
+                    "Telegram send FAILED for %s %s %s %s — NOT recording; will retry",
+                    tier, lv.symbol, lv.setup_tf, lv.pattern,
+                )
 
 
 async def scan_cycle(
