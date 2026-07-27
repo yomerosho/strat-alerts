@@ -66,6 +66,20 @@ armOut    = input.bool(false, "3-2 outside bar (NOT in the scanner)", group = gF
              + "showing only what the scanner can send.")
 armCont   = input.bool(false, "2-2 continuation (NOT in the scanner)", group = gForm)
 
+gQuiet = "Clutter"
+showRejected = input.bool(false, "Draw setups that FAIL the gates", group = gQuiet,
+     tooltip = "Off: only levels the scanner would actually alert get a line. A setup marked "
+             + "under-min-R or stop-too-tight is one the pipeline rejects, so it is not drawn.")
+showManage   = input.bool(false, "Draw +1R / runner management lines", group = gQuiet,
+     tooltip = "The +1R-to-breakeven and runner levels only matter once you are IN. Off keeps "
+             + "the chart to triggers and stops.")
+compactLbl   = input.bool(true,  "Compact labels (drop the repeated price)", group = gQuiet,
+     tooltip = "The line already sits at the price and the axis shows it, so the price is left "
+             + "out of the label text.")
+deepAllTF    = input.bool(false, "F2D-Deep on intraday charts too", group = gQuiet,
+     tooltip = "F2D-Deep is a DAILY swing plan. Off draws it only on 1D and higher, where it is "
+             + "actionable, instead of adding four lines to an execution chart.")
+
 gDeep = "F2D-Deep (frozen daily strategy)"
 showDeep = input.bool(true, "F2D-Deep plan (SPY / QQQ / IWM only)", group = gDeep,
      tooltip = "Frozen 2026-07-25, mirrors f2d_tracker.py: daily 2D against the prior day "
@@ -166,6 +180,18 @@ f_setup(tf) =>
 
 lab4 = f_label(h1_4s, l1_4s, h2_4s, l2_4s)      // last CLOSED 4H bar's label
 labD = f_label(h1_Ds, l1_Ds, h2_Ds, l2_Ds)      // last CLOSED 1D bar's label
+
+// --- SEQ table follows the CHART timeframe -----------------------------------
+// 1H / 2H / 4H / 1D charts show their own sequence; anything below 1H floors to
+// the 1H sequence (a 5m "2U - 1 - 2D" is noise). This drives the context table
+// ONLY -- arming still comes from the 4H / 1D nominators above.
+seqTF = timeframe.isintraday and timeframe.in_seconds(timeframe.period) < timeframe.in_seconds("60")
+     ? "60" : timeframe.period
+f_tfName(tf) =>
+    tf == "60" ? "1H" : tf == "120" ? "2H" : tf == "240" ? "4H" :
+     (tf == "D" or tf == "1D") ? "1D" : (tf == "W" or tf == "1W") ? "1W" : tf
+[h1_Cs, l1_Cs, h2_Cs, l2_Cs, h3_Cs, l3_Cs, hf_Cs, lf_Cs] = f_setup(seqTF)
+labC  = f_label(h1_Cs, l1_Cs, h2_Cs, l2_Cs)     // last CLOSED chart-TF bar
 pat4 = h2_4s > h3_4s and l2_4s < l3_4s ? "3-1-2" : (h2_4s > h3_4s or l2_4s < l3_4s) ? "2-1-2" : "1-1-2"
 patD = h2_Ds > h3_Ds and l2_Ds < l3_Ds ? "3-1-2" : (h2_Ds > h3_Ds or l2_Ds < l3_Ds) ? "2-1-2" : "1-1-2"
 
@@ -287,7 +313,10 @@ f_deepCalc() =>
      lookahead = barmerge.lookahead_off)
 
 deepSym    = syminfo.ticker == "SPY" or syminfo.ticker == "QQQ" or syminfo.ticker == "IWM"
-deepActive = showDeep and deepSym and not na(dSince) and dSince <= 2 and not na(dStop) and not na(dEntry)
+// F2D-Deep is a DAILY swing plan; on an execution chart its four lines are
+// context you cannot act on, so it is drawn on 1D and higher unless asked for.
+deepTF     = deepAllTF or timeframe.in_seconds(timeframe.period) >= timeframe.in_seconds("D")
+deepActive = showDeep and deepSym and deepTF and not na(dSince) and dSince <= 2 and not na(dStop) and not na(dEntry)
 deepSkip   = deepActive and (dEntry <= dStop or dEntry >= dTgt)   // gap rule: stand aside
 deepR      = dEntry - dStop
 
@@ -340,6 +369,10 @@ f_push(p, txt, col, sty, w) =>
     else
         array.set(mT, idx, array.get(mT, idx) + "  ·  " + txt)
 
+// Compact mode drops the price from label text: the line already sits at that
+// price and the axis prints it, so repeating it is pure width.
+f_px(p) => compactLbl ? "" : " " + str.tostring(p, format.mintick)
+
 // Verdict suffix for a trigger label: nearest-rung R when valid, else why not.
 f_rTxt(ok, near, trig, risk) =>
     ok ? "  " + str.tostring(near, "#.0") + "R" :
@@ -350,11 +383,11 @@ f_rTxt(ok, near, trig, risk) =>
 f_pushSide(isBull, tfN, pat, trig, stp, risk, near, ok) =>
     head = isBull ? "▲ long " : "▼ short "
     cMain = isBull ? cBull : cBear
-    f_push(trig, head + pat + " " + tfN + " " + str.tostring(trig, format.mintick) + f_rTxt(ok, near, trig, risk), cMain, 0, 2)
-    f_push(stp, (isBull ? "long stop " : "short stop ") + tfN + " " + str.tostring(stp, format.mintick), cDim, 1, 1)
-    if ok
+    f_push(trig, head + pat + " " + tfN + f_px(trig) + f_rTxt(ok, near, trig, risk), cMain, 0, 2)
+    f_push(stp, (isBull ? "long stop " : "short stop ") + tfN + f_px(stp), cDim, 1, 1)
+    if ok and showManage
         scaleP = isBull ? trig + risk : trig - risk
-        f_push(scaleP, (isBull ? "long" : "short") + " +1R → BE " + tfN + " " + str.tostring(scaleP, format.mintick), cAmber, 2, 1)
+        f_push(scaleP, (isBull ? "long" : "short") + " +1R → BE " + tfN + f_px(scaleP), cAmber, 2, 1)
 
 // One runway rung. R is measured against the armed setup on that side
 // (4H preferred); untouched already implies the rung is beyond price.
@@ -369,7 +402,7 @@ f_rungPush(prior, form, forHi, valid, tfName) =>
                 rr := aSsz ? (aTS - prior) / aRS : bSsz ? (bTS - prior) / bRS : na
             show = na(rr) ? true : rr > 0 and rr >= minRungR
             if show
-                f_push(prior, tfName + " " + str.tostring(prior, format.mintick) +
+                f_push(prior, tfName + f_px(prior) +
                      (na(rr) ? "" : "  " + str.tostring(rr, "#.0") + "R"), cDim, 2, 1)
 
 if barstate.islast
@@ -384,25 +417,26 @@ if barstate.islast
 
     // ---- armed setups: triggers first (they own the style on a merge) ----
     if showSetup
-        if aB
+        if aB and (showRejected or okAB)
             f_pushSide(true,  "4H", aPB, aTB, aSB, aRB, aNB, okAB)
-        if aS
+        if aS and (showRejected or okAS)
             f_pushSide(false, "4H", aPS, aTS, aSS, aRS, aNS, okAS)
-        if bB
+        if bB and (showRejected or okBB)
             f_pushSide(true,  "1D", bPB, bTB, bSB, bRB, bNB, okBB)
-        if bS
+        if bS and (showRejected or okBS)
             f_pushSide(false, "1D", bPS, bTS, bSS, bRS, bNS, okBS)
 
     // ---- F2D-Deep plan ----
     if deepActive
         if deepSkip
-            f_push(dEntry, "F2D-DEEP skip (gapped) " + str.tostring(dEntry, format.mintick), cDim, 1, 1)
+            f_push(dEntry, "F2D-DEEP skip (gapped)" + f_px(dEntry), cDim, 1, 1)
         else
-            f_push(dEntry, "F2D-DEEP long entry " + str.tostring(dEntry, format.mintick) +
+            f_push(dEntry, "F2D-DEEP long entry" + f_px(dEntry) +
                  "  day " + str.tostring(dSince, "#") + "/2", cDeep, 0, 2)
-            f_push(dStop, "DEEP stop " + str.tostring(dStop, format.mintick), cBear, 0, 1)
-            f_push(dEntry + deepR, "DEEP +1R → BE " + str.tostring(dEntry + deepR, format.mintick), cAmber, 2, 1)
-            f_push(dTgt, "DEEP runner " + str.tostring(dTgt, format.mintick), cDeep, 2, 1)
+            f_push(dStop, "DEEP stop" + f_px(dStop), cBear, 0, 1)
+            if showManage
+                f_push(dEntry + deepR, "DEEP +1R → BE" + f_px(dEntry + deepR), cAmber, 2, 1)
+                f_push(dTgt, "DEEP runner" + f_px(dTgt), cDeep, 2, 1)
 
     // ---- runway rungs ----
     // Floor = the lowest ARMED nominator (4H if any 4H formation is armed,
@@ -476,16 +510,27 @@ if showSeq and barstate.islast
     l0_D = f_label(hf_Ds, lf_Ds, h1_Ds, l1_Ds)
     c4 = l0_4 == "2U" ? cBull : l0_4 == "2D" ? cBear : l0_4 == "1" ? cAmber : color.new(#c4b5fd, 0)
     cD2 = l0_D == "2U" ? cBull : l0_D == "2D" ? cBear : l0_D == "1" ? cAmber : color.new(#c4b5fd, 0)
+    // Row 0 = this chart's sequence. Row 1 = the other key HTF for agreement:
+    // 1D normally, or 4H when the chart itself is daily (never duplicated).
+    l2_C = f_label(h2_Cs, l2_Cs, h3_Cs, l3_Cs)
+    l0_C = f_label(hf_Cs, lf_Cs, h1_Cs, l1_Cs)
+    cC   = l0_C == "2U" ? cBull : l0_C == "2D" ? cBear : l0_C == "1" ? cAmber : color.new(#c4b5fd, 0)
+    seqIsD  = seqTF == "D" or seqTF == "1D"
+    nameB   = seqIsD ? "4H" : "1D"
+    l2_B    = seqIsD ? l2_4 : l2_D
+    labB    = seqIsD ? lab4 : labD
+    l0_B    = seqIsD ? l0_4 : l0_D
+    cSeqB   = seqIsD ? c4   : cD2
     chopTxt = na(_chop) ? "—" : str.tostring(_chop, "#") + (_chop > 61.8 ? " chop" : _chop < 38.2 ? " trend" : " mix")
     chopCol = na(_chop) ? cDim : _chop > 61.8 ? cAmber : _chop < 38.2 ? cBull : cDim
     volTxt  = na(_volRatio) ? "—" : str.tostring(_volRatio, "#.0") + "× avg"
     volCol  = na(_volRatio) ? cDim : _volRatio >= 1.5 ? cBull : _volRatio < 0.7 ? cBear : cDim
     atrTxt  = na(_atrRatio) ? "—" : str.tostring(_atrRatio, "#.0") + "× ATR"
     atrCol  = na(_atrRatio) ? cDim : _atrRatio >= 1.2 ? cAmber : _atrRatio < 0.8 ? cDim : color.new(#c4b5fd, 0)
-    table.cell(seqTbl, 0, 0, "SEQ 4H", text_color = color.white, bgcolor = #243040, text_size = tblSize)
-    table.cell(seqTbl, 1, 0, l2_4 + " - " + lab4 + " - " + l0_4, text_color = c4, bgcolor = #243040, text_size = tblSize)
-    table.cell(seqTbl, 0, 1, "SEQ 1D", text_color = color.white, bgcolor = #243040, text_size = tblSize)
-    table.cell(seqTbl, 1, 1, l2_D + " - " + labD + " - " + l0_D, text_color = cD2, bgcolor = #243040, text_size = tblSize)
+    table.cell(seqTbl, 0, 0, "SEQ " + f_tfName(seqTF), text_color = color.white, bgcolor = #243040, text_size = tblSize)
+    table.cell(seqTbl, 1, 0, l2_C + " - " + labC + " - " + l0_C, text_color = cC, bgcolor = #243040, text_size = tblSize)
+    table.cell(seqTbl, 0, 1, "SEQ " + nameB, text_color = color.white, bgcolor = #243040, text_size = tblSize)
+    table.cell(seqTbl, 1, 1, l2_B + " - " + labB + " - " + l0_B, text_color = cSeqB, bgcolor = #243040, text_size = tblSize)
     table.cell(seqTbl, 0, 2, "CHOP", text_color = cDim, bgcolor = #18212c, text_size = tblSize)
     table.cell(seqTbl, 1, 2, chopTxt, text_color = chopCol, bgcolor = #18212c, text_size = tblSize)
     table.cell(seqTbl, 0, 3, "VOL", text_color = cDim, bgcolor = #18212c, text_size = tblSize)
