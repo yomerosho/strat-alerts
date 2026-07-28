@@ -50,7 +50,9 @@ barLabelN   = input.int(10,     "Show labels & T2 markers: last N bars (0 = all)
 onlyInside  = input.bool(false, "  └ only label inside bars (1)", group = gSetup)
 labelSizeIn = input.string("Small", "Label / arrow size", group = gSetup,
      options = ["Tiny", "Small", "Normal", "Large", "Huge"])
-showSetup   = input.bool(true,  "Armed setup + scale-out lines", group = gSetup)
+showSetup   = input.bool(false, "Armed setup lines (trigger / stop)", group = gSetup,
+     tooltip = "Off by default: the horizontal lines are the noisiest thing this script draws, and the alert message already carries trigger, stop and +1R. Turn on when you want the "
+             + "levels ON the chart rather than in the alert.")
 minRunwayR  = input.float(2.0,  "Min runway (R) to call it valid", group = gSetup, step = 0.5)
 drawLen     = input.int(60,     "Draw levels back this many bars", group = gSetup, minval = 10)
 
@@ -109,7 +111,8 @@ volLen      = input.int(20, "Volume-average length", group = gSeq, minval = 2)
 atrLen      = input.int(14, "ATR length", group = gSeq, minval = 1)
 
 gRun = "Magnitude / runway"
-showRunway  = input.bool(true,  "Untouched higher-TF rungs", group = gRun)
+showRunway  = input.bool(false, "Untouched higher-TF rungs", group = gRun,
+     tooltip = "Off by default. These are context (where price may stall), not trade levels.")
 gatingOnly  = input.bool(true,  "  └ only rungs at/above the armed setup TF", group = gRun,
      tooltip = "The scanner ignores rungs below the nominating timeframe (a 2H level on a "
              + "4H setup is a speed bump, not a wall). With a 4H setup armed the floor is "
