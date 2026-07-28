@@ -1,6 +1,6 @@
 {
-  "generated_at_utc": "2026-07-28T19:15:55.114351Z",
-  "generated_at_et": "2026-07-28T15:15:55.114362-04:00",
+  "generated_at_utc": "2026-07-28T19:20:44.066156Z",
+  "generated_at_et": "2026-07-28T15:20:44.066165-04:00",
   "version": 5,
   "tickers": [
     "SPY",
@@ -28,22 +28,98 @@
     "1D",
     "1W"
   ],
-  "armed_levels": [],
+  "armed_levels": [
+    {
+      "symbol": "NVDA",
+      "setup_tf": "1D",
+      "family": "f2",
+      "pattern": "F2D",
+      "direction": "bull",
+      "trigger_side": "above",
+      "level": 195.44,
+      "invalidation": 192.74,
+      "target": 198.7,
+      "risk_reward": 1.21,
+      "scale_level": 198.14,
+      "runner_r": 1.21,
+      "current_price": 197.7,
+      "distance_pct": 1.156,
+      "tier": "TIER2",
+      "tier1_time": "2026-07-28T10:45:00-04:00",
+      "tier2_time": "2026-07-28T10:45:00-04:00",
+      "setup_bar_time": "2026-07-28T00:00:00-04:00",
+      "setup_bar_closes_at": "2026-07-28T16:00:00-04:00",
+      "minutes_to_next_15m": 10,
+      "continuity": "5/5",
+      "invalidated_by_opposite": false,
+      "decision": {
+        "passed": true,
+        "score": 20,
+        "runway_r": 7.02,
+        "nearest_r": 4.93,
+        "rungs": [
+          {
+            "tf": "2H",
+            "level": 198.7,
+            "r": 1.21,
+            "gating": false
+          },
+          {
+            "tf": "4H",
+            "level": 198.7,
+            "r": 1.21,
+            "gating": false
+          },
+          {
+            "tf": "1D",
+            "level": 208.75,
+            "r": 4.93,
+            "gating": true
+          },
+          {
+            "tf": "1W",
+            "level": 214.39,
+            "r": 7.02,
+            "gating": true
+          }
+        ],
+        "continuity": {
+          "4H": true,
+          "1D": true
+        },
+        "ftfc": {
+          "1H": true,
+          "2H": true,
+          "4H": true,
+          "1D": true,
+          "1W": false
+        },
+        "ftfc_aligned": 4,
+        "nested_tfs": [
+          "1D"
+        ],
+        "compressed": false,
+        "reasons": [
+          "pass: 2 gating rungs, nearest 4.9R, runway 7.0R, score 20"
+        ]
+      }
+    }
+  ],
   "symbols": [
     {
       "symbol": "SPY",
-      "price": 741.47,
-      "scanned_at": "2026-07-28T15:15:37.532063-04:00",
+      "price": 741.65,
+      "scanned_at": "2026-07-28T15:20:26.487869-04:00",
       "timeframes": {
         "5Min": {
           "labels": [
-            "2U",
             "2D",
-            "2D"
+            "2D",
+            "3"
           ],
-          "high": 741.65,
-          "low": 741.33,
-          "last_bar": "2026-07-28T15:10:00-04:00"
+          "high": 741.72,
+          "low": 741.31,
+          "last_bar": "2026-07-28T15:15:00-04:00"
         },
         "15Min": {
           "labels": [
@@ -120,18 +196,18 @@
     },
     {
       "symbol": "QQQ",
-      "price": 677.18,
-      "scanned_at": "2026-07-28T15:15:37.532217-04:00",
+      "price": 677.23,
+      "scanned_at": "2026-07-28T15:20:26.487394-04:00",
       "timeframes": {
         "5Min": {
           "labels": [
             "2U",
-            "2U",
-            "2D"
+            "2D",
+            "3"
           ],
-          "high": 677.33,
-          "low": 676.78,
-          "last_bar": "2026-07-28T15:10:00-04:00"
+          "high": 677.36,
+          "low": 676.67,
+          "last_bar": "2026-07-28T15:15:00-04:00"
         },
         "15Min": {
           "labels": [
@@ -218,18 +294,18 @@
     },
     {
       "symbol": "IWM",
-      "price": 293.14,
-      "scanned_at": "2026-07-28T15:15:37.534806-04:00",
+      "price": 293.2,
+      "scanned_at": "2026-07-28T15:20:26.487597-04:00",
       "timeframes": {
         "5Min": {
           "labels": [
             "2U",
-            "2U",
-            "2D"
+            "2D",
+            "1"
           ],
-          "high": 293.3,
-          "low": 293.08,
-          "last_bar": "2026-07-28T15:10:00-04:00"
+          "high": 293.29,
+          "low": 293.1,
+          "last_bar": "2026-07-28T15:15:00-04:00"
         },
         "15Min": {
           "labels": [
@@ -309,25 +385,25 @@
           "direction": "bull",
           "level": 291.11,
           "reasons": [
-            "gate3: 4H, 1D forming bar against direction"
+            "gate3: 4H forming bar against direction"
           ]
         }
       ]
     },
     {
       "symbol": "AAPL",
-      "price": 339.17,
-      "scanned_at": "2026-07-28T15:15:37.535667-04:00",
+      "price": 339.28,
+      "scanned_at": "2026-07-28T15:20:26.487692-04:00",
       "timeframes": {
         "5Min": {
           "labels": [
-            "2U",
             "2D",
-            "2D"
+            "2D",
+            "3"
           ],
-          "high": 339.45,
-          "low": 339.16,
-          "last_bar": "2026-07-28T15:10:00-04:00"
+          "high": 339.48,
+          "low": 339.13,
+          "last_bar": "2026-07-28T15:15:00-04:00"
         },
         "15Min": {
           "labels": [
@@ -414,18 +490,18 @@
     },
     {
       "symbol": "AMZN",
-      "price": 231.19,
-      "scanned_at": "2026-07-28T15:15:37.536806-04:00",
+      "price": 231.06,
+      "scanned_at": "2026-07-28T15:20:26.491793-04:00",
       "timeframes": {
         "5Min": {
           "labels": [
             "2U",
-            "2U",
+            "2D",
             "2D"
           ],
-          "high": 231.37,
-          "low": 231.13,
-          "last_bar": "2026-07-28T15:10:00-04:00"
+          "high": 231.34,
+          "low": 231.03,
+          "last_bar": "2026-07-28T15:15:00-04:00"
         },
         "15Min": {
           "labels": [
@@ -512,18 +588,18 @@
     },
     {
       "symbol": "META",
-      "price": 593.37,
-      "scanned_at": "2026-07-28T15:15:37.537796-04:00",
+      "price": 593.96,
+      "scanned_at": "2026-07-28T15:20:26.493707-04:00",
       "timeframes": {
         "5Min": {
           "labels": [
-            "2U",
+            "2D",
             "2D",
             "2D"
           ],
-          "high": 594.49,
-          "low": 593.36,
-          "last_bar": "2026-07-28T15:10:00-04:00"
+          "high": 594.28,
+          "low": 593.2,
+          "last_bar": "2026-07-28T15:15:00-04:00"
         },
         "15Min": {
           "labels": [
@@ -603,25 +679,25 @@
           "direction": "bull",
           "level": 593.13,
           "reasons": [
-            "gate3: 4H, 1D forming bar against direction"
+            "gate3: 1D forming bar against direction"
           ]
         }
       ]
     },
     {
       "symbol": "NVDA",
-      "price": 197.59,
-      "scanned_at": "2026-07-28T15:15:37.538745-04:00",
+      "price": 197.7,
+      "scanned_at": "2026-07-28T15:20:26.494644-04:00",
       "timeframes": {
         "5Min": {
           "labels": [
             "2U",
-            "2U",
-            "2D"
+            "2D",
+            "2U"
           ],
-          "high": 197.69,
-          "low": 197.19,
-          "last_bar": "2026-07-28T15:10:00-04:00"
+          "high": 197.73,
+          "low": 197.29,
+          "last_bar": "2026-07-28T15:15:00-04:00"
         },
         "15Min": {
           "labels": [
@@ -694,32 +770,22 @@
           "last_bar": "2026-07-20T00:00:00-04:00"
         }
       },
-      "rejected": [
-        {
-          "pattern": "F2D",
-          "setup_tf": "1D",
-          "direction": "bull",
-          "level": 195.44,
-          "reasons": [
-            "gate3: 4H forming bar against direction"
-          ]
-        }
-      ]
+      "rejected": []
     },
     {
       "symbol": "PLTR",
-      "price": 123.36,
-      "scanned_at": "2026-07-28T15:15:37.539697-04:00",
+      "price": 123.17,
+      "scanned_at": "2026-07-28T15:20:26.495623-04:00",
       "timeframes": {
         "5Min": {
           "labels": [
-            "2U",
             "3",
+            "2D",
             "2D"
           ],
-          "high": 123.47,
-          "low": 123.15,
-          "last_bar": "2026-07-28T15:10:00-04:00"
+          "high": 123.41,
+          "low": 123.13,
+          "last_bar": "2026-07-28T15:15:00-04:00"
         },
         "15Min": {
           "labels": [
@@ -796,18 +862,18 @@
     },
     {
       "symbol": "TSLA",
-      "price": 306.12,
-      "scanned_at": "2026-07-28T15:15:44.651258-04:00",
+      "price": 306.29,
+      "scanned_at": "2026-07-28T15:20:34.593670-04:00",
       "timeframes": {
         "5Min": {
           "labels": [
-            "2U",
             "2D",
-            "2D"
+            "2D",
+            "2U"
           ],
-          "high": 306.14,
-          "low": 305.54,
-          "last_bar": "2026-07-28T15:10:00-04:00"
+          "high": 306.49,
+          "low": 305.86,
+          "last_bar": "2026-07-28T15:15:00-04:00"
         },
         "15Min": {
           "labels": [
