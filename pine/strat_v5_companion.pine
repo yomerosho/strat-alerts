@@ -50,11 +50,8 @@ barLabelN   = input.int(10,     "Show labels & T2 markers: last N bars (0 = all)
 onlyInside  = input.bool(false, "  └ only label inside bars (1)", group = gSetup)
 labelSizeIn = input.string("Small", "Label / arrow size", group = gSetup,
      options = ["Tiny", "Small", "Normal", "Large", "Huge"])
-showSetup   = input.bool(false, "Armed setup lines (trigger / stop)", group = gSetup,
-     tooltip = "Off by default: the horizontal lines are the noisiest thing this script draws, and the alert message already carries trigger, stop and +1R. Turn on when you want the "
-             + "levels ON the chart rather than in the alert.")
-minRunwayR  = input.float(2.0,  "Min runway (R) to call it valid", group = gSetup, step = 0.5)
-drawLen     = input.int(60,     "Draw levels back this many bars", group = gSetup, minval = 10)
+minRunwayR  = input.float(2.0,  "Min runway (R) to call it valid", group = gSetup, step = 0.5,
+     tooltip = "Gate 2. Still gates the T2 marker and the alert -- it just no longer draws a line.")
 
 gForm = "Formations (what arms a trigger)"
 armInside = input.bool(true,  "Inside bar (x-1-2) — both edges", group = gForm)
@@ -68,20 +65,6 @@ armOut    = input.bool(false, "3-2 outside bar (NOT in the scanner)", group = gF
              + "showing only what the scanner can send.")
 armCont   = input.bool(false, "2-2 continuation (NOT in the scanner)", group = gForm)
 
-gQuiet = "Clutter"
-showRejected = input.bool(false, "Draw setups that FAIL the gates", group = gQuiet,
-     tooltip = "Off: only levels the scanner would actually alert get a line. A setup marked "
-             + "under-min-R or stop-too-tight is one the pipeline rejects, so it is not drawn.")
-showManage   = input.bool(false, "Draw +1R / runner management lines", group = gQuiet,
-     tooltip = "The +1R-to-breakeven and runner levels only matter once you are IN. Off keeps "
-             + "the chart to triggers and stops.")
-compactLbl   = input.bool(true,  "Compact labels (drop the repeated price)", group = gQuiet,
-     tooltip = "The line already sits at the price and the axis shows it, so the price is left "
-             + "out of the label text.")
-deepAllTF    = input.bool(false, "F2D-Deep on intraday charts too", group = gQuiet,
-     tooltip = "F2D-Deep is a DAILY swing plan. Off draws it only on 1D and higher, where it is "
-             + "actionable, instead of adding four lines to an execution chart.")
-
 gDeep = "F2D-Deep (frozen daily strategy)"
 showDeep = input.bool(true, "F2D-Deep plan (SPY / QQQ / IWM only)", group = gDeep,
      tooltip = "Frozen 2026-07-25, mirrors f2d_tracker.py: daily 2D against the prior day "
@@ -92,6 +75,13 @@ showDeep = input.bool(true, "F2D-Deep plan (SPY / QQQ / IWM only)", group = gDee
              + "after entry. Skip if the open gaps beyond stop or target. The plan lines "
              + "appear once the entry session's daily bar exists and stay up for the "
              + "3-session trade window.")
+deepAllTF = input.bool(false, "  └ on intraday charts too", group = gDeep,
+     tooltip = "F2D-Deep is a DAILY swing plan. Off draws it only on 1D and higher, where it is "
+             + "actionable, instead of adding lines to an execution chart.")
+showManage = input.bool(false, "  └ draw +1R / runner lines", group = gDeep,
+     tooltip = "The +1R-to-breakeven and runner levels only matter once you are IN.")
+compactLbl = input.bool(true,  "  └ compact labels (drop the repeated price)", group = gDeep)
+drawLen    = input.int(60,     "  └ line length (bars back)", group = gDeep, minval = 10)
 
 gFtfc = "FTFC continuity (Gate 3b)"
 showFTFC    = input.bool(true,  "Show FTFC table", group = gFtfc)
@@ -109,15 +99,6 @@ seqPos      = input.string("Top Right", "Table position", group = gSeq,
 chopLen     = input.int(14, "Choppiness length", group = gSeq, minval = 2)
 volLen      = input.int(20, "Volume-average length", group = gSeq, minval = 2)
 atrLen      = input.int(14, "ATR length", group = gSeq, minval = 1)
-
-gRun = "Magnitude / runway"
-showRunway  = input.bool(false, "Untouched higher-TF rungs", group = gRun,
-     tooltip = "Off by default. These are context (where price may stall), not trade levels.")
-gatingOnly  = input.bool(true,  "  └ only rungs at/above the armed setup TF", group = gRun,
-     tooltip = "The scanner ignores rungs below the nominating timeframe (a 2H level on a "
-             + "4H setup is a speed bump, not a wall). With a 4H setup armed the floor is "
-             + "4H; with only a 1D setup armed it is 1D.")
-minRungR    = input.float(0.0,  "  └ hide rungs closer than N R", group = gRun, minval = 0, step = 0.5)
 
 gT2 = "Tier-2 confirmation (arrows)"
 showT2      = input.bool(true,  "Mark bar-close through trigger", group = gT2,
@@ -274,14 +255,6 @@ okAS = f_ok(aS, aTS, aRS, aNS)
 okBB = f_ok(bB, bTB, bRB, bNB)
 okBS = f_ok(bS, bTS, bRS, bNS)
 
-// A side is "sized" only when its risk clears the Gate 2a noise floor. Rung R is
-// meaningless against an unsized setup -- a 3-cent F2 stop turns every rung into
-// a 200R+ headline, which is arithmetic, not runway.
-aBsz = aB and aRB > 0 and aTB > 0 and aRB / aTB >= MINRISK
-aSsz = aS and aRS > 0 and aTS > 0 and aRS / aTS >= MINRISK
-bBsz = bB and bRB > 0 and bTB > 0 and bRB / bTB >= MINRISK
-bSsz = bS and bRS > 0 and bTS > 0 and bRS / bTS >= MINRISK
-
 // --------------------------------------------------------- FTFC continuity ----
 f_dir(c, o) => c > o ? 1 : c < o ? -1 : 0
 d60  = f_dir(c_60,  o_60)
@@ -376,37 +349,12 @@ f_push(p, txt, col, sty, w) =>
 // price and the axis prints it, so repeating it is pure width.
 f_px(p) => compactLbl ? "" : " " + str.tostring(p, format.mintick)
 
-// Verdict suffix for a trigger label: nearest-rung R when valid, else why not.
-f_rTxt(ok, near, trig, risk) =>
-    ok ? "  " + str.tostring(near, "#.0") + "R" :
-     trig > 0 and risk > 0 and risk / trig < MINRISK ? "  stop too tight" :
-     near >= 1e8 ? "  no rung" : "  <" + str.tostring(minRunwayR, "#.0") + "R"
-
-// One armed side -> trigger + stop (+1R only when the gates pass).
-f_pushSide(isBull, tfN, pat, trig, stp, risk, near, ok) =>
-    head = isBull ? "▲ long " : "▼ short "
-    cMain = isBull ? cBull : cBear
-    f_push(trig, head + pat + " " + tfN + f_px(trig) + f_rTxt(ok, near, trig, risk), cMain, 0, 2)
-    f_push(stp, (isBull ? "long stop " : "short stop ") + tfN + f_px(stp), cDim, 1, 1)
-    if ok and showManage
-        scaleP = isBull ? trig + risk : trig - risk
-        f_push(scaleP, (isBull ? "long" : "short") + " +1R → BE " + tfN + f_px(scaleP), cAmber, 2, 1)
-
-// One runway rung. R is measured against the armed setup on that side
-// (4H preferred); untouched already implies the rung is beyond price.
-f_rungPush(prior, form, forHi, valid, tfName) =>
-    if valid and not na(prior)
-        untouched = forHi ? f_untouchedHi(prior, form) : f_untouchedLo(prior, form)
-        if untouched
-            float rr = na
-            if forHi
-                rr := aBsz ? (prior - aTB) / aRB : bBsz ? (prior - bTB) / bRB : na
-            else
-                rr := aSsz ? (aTS - prior) / aRS : bSsz ? (bTS - prior) / bRS : na
-            show = na(rr) ? true : rr > 0 and rr >= minRungR
-            if show
-                f_push(prior, tfName + f_px(prior) +
-                     (na(rr) ? "" : "  " + str.tostring(rr, "#.0") + "R"), cDim, 2, 1)
+// NOTE: this script deliberately draws NO setup lines and NO runway rungs.
+// Trigger / stop / +1R and the untouched higher-TF rungs used to be drawn as
+// full-width rays with text labels; they were the noisiest thing here and the
+// alert message already carries every one of those numbers. The levels are
+// still computed above -- they gate the T2 marker and the alert -- they are
+// just not drawn. The only lines left are the F2D-Deep plan.
 
 if barstate.islast
     f_clear()
@@ -418,18 +366,7 @@ if barstate.islast
     xL = bar_index - drawLen
     xR = bar_index + 12
 
-    // ---- armed setups: triggers first (they own the style on a merge) ----
-    if showSetup
-        if aB and (showRejected or okAB)
-            f_pushSide(true,  "4H", aPB, aTB, aSB, aRB, aNB, okAB)
-        if aS and (showRejected or okAS)
-            f_pushSide(false, "4H", aPS, aTS, aSS, aRS, aNS, okAS)
-        if bB and (showRejected or okBB)
-            f_pushSide(true,  "1D", bPB, bTB, bSB, bRB, bNB, okBB)
-        if bS and (showRejected or okBS)
-            f_pushSide(false, "1D", bPS, bTS, bSS, bRS, bNS, okBS)
-
-    // ---- F2D-Deep plan ----
+    // ---- F2D-Deep plan (the only lines this script draws) ----
     if deepActive
         if deepSkip
             f_push(dEntry, "F2D-DEEP skip (gapped)" + f_px(dEntry), cDim, 1, 1)
@@ -440,25 +377,6 @@ if barstate.islast
             if showManage
                 f_push(dEntry + deepR, "DEEP +1R → BE" + f_px(dEntry + deepR), cAmber, 2, 1)
                 f_push(dTgt, "DEEP runner" + f_px(dTgt), cDeep, 2, 1)
-
-    // ---- runway rungs ----
-    // Floor = the lowest ARMED nominator (4H if any 4H formation is armed,
-    // else 1D); with nothing armed, keep the 4H floor so 2H stays hidden.
-    if showRunway
-        floorSec = not gatingOnly ? 0 : (aB or aS) ? timeframe.in_seconds("240") :
-             (bB or bS) ? timeframe.in_seconds("D") : timeframe.in_seconds("240")
-        ok2H = timeframe.in_seconds("120") >= floorSec
-        ok4H = timeframe.in_seconds("240") >= floorSec
-        ok1D = timeframe.in_seconds("D")   >= floorSec
-        ok1W = timeframe.in_seconds("W")   >= floorSec
-        f_rungPush(h1_120, hf_120, true,  ok2H, "2H")
-        f_rungPush(h1_240, hf_240, true,  ok4H, "4H")
-        f_rungPush(h1_D,   hf_D,   true,  ok1D, "1D")
-        f_rungPush(h1_W,   hf_W,   true,  ok1W, "1W")
-        f_rungPush(l1_120, lf_120, false, ok2H, "2H")
-        f_rungPush(l1_240, lf_240, false, ok4H, "4H")
-        f_rungPush(l1_D,   lf_D,   false, ok1D, "1D")
-        f_rungPush(l1_W,   lf_W,   false, ok1W, "1W")
 
     // ---- draw the merged buffer ----
     if array.size(mP) > 0
