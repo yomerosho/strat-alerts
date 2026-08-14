@@ -126,7 +126,11 @@ class StratScanner:
         if not armed:
             return [], snapshot
 
-        # --- Gates 2 and 3: magnitude and continuity ---
+        # --- Gates 2, 3 and 4: magnitude, continuity, intraday extension ---
+        # How far today has already travelled is a property of the SESSION,
+        # not of any one level, so it is computed once per symbol.
+        session_ext, session_dir = magnitude.session_state(df5, now_et)
+
         for lv in armed:
             lv.decision = magnitude.evaluate(
                 closed_by_tf,
@@ -138,6 +142,11 @@ class StratScanner:
                 min_runway_r=getattr(CONFIG, "min_runway_r", magnitude.MIN_RUNWAY_R),
                 min_ftfc=getattr(CONFIG, "min_ftfc", magnitude.MIN_FTFC),
                 ftfc_tfs=getattr(CONFIG, "ftfc_timeframes", magnitude.FTFC_TFS),
+                session_ext=session_ext,
+                session_dir=session_dir,
+                max_session_ext=getattr(
+                    CONFIG, "max_session_ext", magnitude.MAX_SESSION_EXT
+                ),
             )
 
             # The Strat's native target is the same-timeframe prior extreme.

@@ -83,6 +83,28 @@ ALERT_BUDGET: int = 3
 # noise floor of the instrument is an artifact of the arithmetic, not an edge.
 MIN_RISK_PCT: float = 0.0015   # 0.15% of price
 
+# Gate 4 -- intraday extension.
+#
+# Measured on the 1,277-trade replay in v5_1y.csv (2025-07 -> 2026-07). Split
+# every signal by how far the SESSION had already travelled when the trigger
+# fired -- |price - open| / (high - low) so far, using closed 5m bars only:
+#
+#     already extended AND trade runs WITH the move   +0.05R   (46% of signals)
+#     session not yet extended                        +0.72R   (54% of signals)
+#     trade runs AGAINST the move so far              +1.36R   (15%, ~90% win)
+#
+# against +0.42R for the book as a whole. The threshold was fitted on the first
+# six months and held unchanged on the second (+0.09R for the extended-and-with
+# bucket vs +0.74R for the rest), and it survives WITHIN each pattern, so it is
+# not a restatement of "F2s are good". The edge is entering while the day still
+# looks like chop; once the day has committed and you are going with it, there
+# is nothing left to pay for the risk.
+#
+# NOTE this is the opposite of the intuition that you should trade trend days.
+# Trend days ARE the profitable ones -- but the money is made getting in before
+# the trend is obvious, not after.
+MAX_SESSION_EXT: float = 0.52
+
 
 @dataclass(frozen=True)
 class Rung:
@@ -106,6 +128,7 @@ class Decision:
     ftfc: dict[str, bool] = field(default_factory=dict)
     nested_tfs: list[str] = field(default_factory=list)
     compressed: bool = False
+    session_ext: Optional[float] = None
     reasons: list[str] = field(default_factory=list)
 
     @property
@@ -171,6 +194,7 @@ class Decision:
             "ftfc_aligned": self.ftfc_aligned,
             "nested_tfs": self.nested_tfs,
             "compressed": self.compressed,
+            "session_ext": round(self.session_ext, 3) if self.session_ext is not None else None,
             "reasons": self.reasons,
         }
 
@@ -310,6 +334,40 @@ def nested_at(
     return hit
 
 
+def session_state(
+    df5: pd.DataFrame,
+    now_et: pd.Timestamp,
+) -> tuple[Optional[float], Optional[int]]:
+    """
+    How far has TODAY already travelled, and which way?
+
+    Returns (extension, direction) where extension is
+    |last close - session open| / (session high - session low) measured over
+    CLOSED 5-minute bars only, and direction is +1 up / -1 down / 0 flat.
+
+    (None, None) before there are three closed bars: too early to say anything,
+    and the replay this gate is calibrated on required the same three bars.
+    """
+    from bars import is_closed, session_open
+
+    if df5 is None or df5.empty:
+        return None, None
+    start = session_open(now_et)
+    sess = df5[df5.index >= start]
+    if sess.empty:
+        return None, None
+    sess = sess[sess["bar_end"].apply(lambda e: is_closed(e, now_et))]
+    if len(sess) < 3:
+        return None, None
+
+    o = float(sess["open"].iloc[0])
+    c = float(sess["close"].iloc[-1])
+    rng = float(sess["high"].max()) - float(sess["low"].min())
+    if rng <= 0:
+        return None, None
+    return abs(c - o) / rng, (1 if c > o else -1 if c < o else 0)
+
+
 def higher_tf_compressed(
     closed_by_tf: dict[str, pd.DataFrame],
     tfs: tuple[str, ...] = ("4H", "1D"),
@@ -339,6 +397,9 @@ def evaluate(
     min_runway_r: float = MIN_RUNWAY_R,
     min_ftfc: int = MIN_FTFC,
     ftfc_tfs: tuple[str, ...] = FTFC_TFS,
+    session_ext: Optional[float] = None,
+    session_dir: Optional[int] = None,
+    max_session_ext: float = MAX_SESSION_EXT,
 ) -> Decision:
     """
     Run every gate. Returns a Decision carrying the full reason trail so
@@ -396,6 +457,19 @@ def evaluate(
         return d.fail(
             f"gate3b: FTFC {d.ftfc_aligned}/{len(d.ftfc)} aligned < {min_ftfc}"
         )
+
+    # Gate 4 -- don't chase a day that has already committed.
+    # Only bites when BOTH are true: the session is extended AND this trade
+    # runs with that move. A counter-move trade on an extended day is the
+    # best bucket in the replay, so it is deliberately left alone.
+    d.session_ext = session_ext
+    if session_ext is not None and session_dir:
+        with_the_day = (session_dir > 0) == (direction == BULL)
+        if with_the_day and session_ext >= max_session_ext:
+            return d.fail(
+                f"gate4: session already {session_ext:.0%} extended and this "
+                f"trade runs with it (max {max_session_ext:.0%})"
+            )
 
     # Score -- the sort key for the daily alert budget (Gate 5).
     # These weights are a first guess, NOT a validated model. Treat the number

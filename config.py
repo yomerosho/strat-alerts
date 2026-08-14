@@ -136,6 +136,16 @@ class Config:
     ftfc_timeframes: tuple[str, ...] = ("1H", "2H", "4H", "1D", "1W")
     min_ftfc: int = field(default_factory=lambda: int(os.getenv("MIN_FTFC") or "4"))
 
+    # Gate 4: suppress a signal once the session has already travelled this far
+    # (|price-open| / range so far) AND the trade runs WITH that move. On the
+    # 1,277-trade replay that bucket earned +0.05R against +0.42R for the book;
+    # the rest earned +0.72R. Fitted on the first six months of the year and
+    # unchanged on the second. Set 1.0 to disable -- extension can never exceed
+    # 1.0, so nothing is ever gated.
+    max_session_ext: float = field(
+        default_factory=lambda: float(os.getenv("MAX_SESSION_EXT") or "0.52")
+    )
+
     # Gate 5: hard cap on alerts per scan, across the whole watchlist, ranked by
     # score. Crude on purpose -- it forces the ranking to do real work and keeps
     # the feed small enough that you READ it instead of tuning it out.
