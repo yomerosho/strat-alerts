@@ -145,6 +145,26 @@ def _rr(lv: ArmedLevel) -> str:
     return f"  (R:R {rr:.1f})" if rr is not None else ""
 
 
+def _session_line(lv: ArmedLevel) -> str:
+    """
+    Gate 4 context: how much of today's range is already behind us.
+
+    Every alert that arrives has passed Gate 4, so this is not a warning --
+    it is the evidence that the gate ran. "open" means the day has not yet
+    committed, which is where the replay put +0.72R/trade. A high reading can
+    still appear here when the trade runs AGAINST the day's move, because that
+    combination is deliberately not gated (it was the best bucket at +1.36R).
+    """
+    d = getattr(lv, "decision", None)
+    ext = getattr(d, "session_ext", None) if d is not None else None
+    if ext is None:
+        return ""
+    from config import CONFIG
+
+    limit = getattr(CONFIG, "max_session_ext", 0.52)
+    return f"Session: {ext * 100:.0f}% of range spent  ({'open' if ext < limit else 'extended'})"
+
+
 def _scale_plan(lv: ArmedLevel) -> list[str]:
     """
     The committed exit model, spelled out on the alert.
@@ -192,6 +212,8 @@ def format_arm_alert(lv: ArmedLevel) -> str:
     ]
     lines.extend(_scale_plan(lv))
     lines.append(f"Continuity: {lv.continuity}")
+    if _session_line(lv):
+        lines.append(_session_line(lv))
     if lv.setup_bar_closes_at is not None:
         lines.append(f"{lv.setup_tf} bar closes: {_fmt_time(lv.setup_bar_closes_at)}")
     lines.append("")
@@ -228,6 +250,8 @@ def format_tier1_alert(lv: ArmedLevel, f2_actionable: bool) -> str:
 
     lines.extend(_scale_plan(lv))
     lines.append(f"Continuity: {lv.continuity}")
+    if _session_line(lv):
+        lines.append(_session_line(lv))
     if lv.setup_bar_closes_at is not None:
         lines.append(f"{lv.setup_tf} bar closes: {_fmt_time(lv.setup_bar_closes_at)}")
 
@@ -259,6 +283,8 @@ def format_tier2_alert(lv: ArmedLevel) -> str:
         lines.append(f"Tier 1 was: {_fmt_time(lv.tier1_time)}")
     lines.extend(_scale_plan(lv))
     lines.append(f"Continuity: {lv.continuity}")
+    if _session_line(lv):
+        lines.append(_session_line(lv))
     if lv.setup_bar_closes_at is not None:
         lines.append(f"{lv.setup_tf} bar closes: {_fmt_time(lv.setup_bar_closes_at)}")
 

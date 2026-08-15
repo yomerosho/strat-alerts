@@ -52,6 +52,13 @@ labelSizeIn = input.string("Small", "Label / arrow size", group = gSetup,
      options = ["Tiny", "Small", "Normal", "Large", "Huge"])
 minRunwayR  = input.float(2.0,  "Min runway (R) to call it valid", group = gSetup, step = 0.5,
      tooltip = "Gate 2. Still gates the T2 marker and the alert -- it just no longer draws a line.")
+maxSessExt  = input.float(0.52, "Gate 4: session spent above this %", group = gSetup,
+     minval = 0.0, maxval = 1.0, step = 0.01,
+     tooltip = "Mirrors magnitude.MAX_SESSION_EXT in the scanner. Once the session has "
+             + "travelled this far (|price - open| / range so far) a WITH-the-move entry has "
+             + "historically returned ~+0.05R against ~+0.72R for the rest, so the scanner "
+             + "suppresses that alert. The EXT row turns red at this level. It does NOT argue "
+             + "against a counter-move trade -- that was the strongest bucket in the replay.")
 
 gForm = "Formations (what arms a trigger)"
 armInside = input.bool(true,  "Inside bar (x-1-2) — both edges", group = gForm)
@@ -296,6 +303,24 @@ deepActive = showDeep and deepSym and deepTF and not na(dSince) and dSince <= 2 
 deepSkip   = deepActive and (dEntry <= dStop or dEntry >= dTgt)   // gap rule: stand aside
 deepR      = dEntry - dStop
 
+// ------------------------------------------------ session extension (Gate 4) --
+// The SAME number magnitude.session_state() computes, read off 5m bars so it
+// matches the scanner whatever timeframe this chart is on:
+//     ext = |price - session open| / (session high - session low)
+// On the 1,277-trade replay, taking a signal WITH the day's move once ext was
+// past ~52% earned +0.05R; everything else earned +0.72R. So a high reading is
+// not a green light -- it means the with-trend entry is already spent, and the
+// scanner will suppress that alert. It says nothing against a counter-move
+// trade, which was the best bucket in the replay.
+// Taken straight off the FORMING daily bar already read above: its open, high
+// and low ARE the session's. No extra security call, no state, and identical
+// on every chart timeframe. (A hand-rolled 5m version using `var` inside
+// request.security silently collapsed to the current bar and read 0% all day --
+// this formulation has nothing to get wrong.)
+sRng = hf_D - lf_D
+sExt = sRng > 0 ? math.abs(c_D - o_D) / sRng : na
+sDir = c_D > o_D ? 1 : c_D < o_D ? -1 : 0
+
 // ---- chart-TF context metrics (computed every bar; ta.* must be global) ----
 // Choppiness Index: >61.8 = choppy/ranging, <38.2 = trending.
 _chopRange = ta.highest(high, chopLen) - ta.lowest(low, chopLen)
@@ -424,7 +449,7 @@ var table seqTbl = na
 if showSeq and barstate.islast
     posS = seqPos == "Top Right" ? position.top_right : seqPos == "Top Left" ? position.top_left : seqPos == "Bottom Right" ? position.bottom_right : seqPos == "Bottom Left" ? position.bottom_left : seqPos == "Middle Right" ? position.middle_right : position.middle_left
     if na(seqTbl)
-        seqTbl := table.new(posS, 2, 5, border_width = 1)
+        seqTbl := table.new(posS, 2, 6, border_width = 1)
     l2_4 = f_label(h2_4s, l2_4s, h3_4s, l3_4s)
     l0_4 = f_label(hf_4s, lf_4s, h1_4s, l1_4s)
     l2_D = f_label(h2_Ds, l2_Ds, h3_Ds, l3_Ds)
@@ -458,6 +483,13 @@ if showSeq and barstate.islast
     table.cell(seqTbl, 1, 3, volTxt, text_color = volCol, bgcolor = #18212c, text_size = tblSize)
     table.cell(seqTbl, 0, 4, "ATR", text_color = cDim, bgcolor = #18212c, text_size = tblSize)
     table.cell(seqTbl, 1, 4, atrTxt, text_color = atrCol, bgcolor = #18212c, text_size = tblSize)
+    // Gate 4 readout: how much of the day is already spent, and which way.
+    arrow  = sDir > 0 ? " ↑" : sDir < 0 ? " ↓" : ""
+    extTxt = na(sExt) ? "—" : str.tostring(sExt * 100, "#") + "%" + arrow +
+         (sExt >= maxSessExt ? "  spent" : "  open")
+    extCol = na(sExt) ? cDim : sExt >= maxSessExt ? cBear : cBull
+    table.cell(seqTbl, 0, 5, "EXT", text_color = cDim, bgcolor = #18212c, text_size = tblSize)
+    table.cell(seqTbl, 1, 5, extTxt, text_color = extCol, bgcolor = #18212c, text_size = tblSize)
 
 // ------------------------------------------------ Tier-2 confirmation ---------
 // A chart-TF close through an armed trigger. Gated (default) = min risk +
