@@ -486,7 +486,7 @@ if showSeq and barstate.islast
     // Gate 4 readout: how much of the day is already spent, and which way.
     arrow  = sDir > 0 ? " ↑" : sDir < 0 ? " ↓" : ""
     extTxt = na(sExt) ? "—" : str.tostring(sExt * 100, "#") + "%" + arrow +
-         (sExt >= maxSessExt ? "  spent" : "  open")
+         (sExt >= maxSessExt ? "  late" : "  early")
     extCol = na(sExt) ? cDim : sExt >= maxSessExt ? cBear : cBull
     table.cell(seqTbl, 0, 5, "EXT", text_color = cDim, bgcolor = #18212c, text_size = tblSize)
     table.cell(seqTbl, 1, 5, extTxt, text_color = extCol, bgcolor = #18212c, text_size = tblSize)

@@ -150,10 +150,13 @@ def _session_line(lv: ArmedLevel) -> str:
     Gate 4 context: how much of today's range is already behind us.
 
     Every alert that arrives has passed Gate 4, so this is not a warning --
-    it is the evidence that the gate ran. "open" means the day has not yet
-    committed, which is where the replay put +0.72R/trade. A high reading can
-    still appear here when the trade runs AGAINST the day's move, because that
-    combination is deliberately not gated (it was the best bucket at +1.36R).
+    it is the evidence that the gate ran.
+
+    "early" means the day has not committed yet, which is where the replay put
+    +0.72R/trade. "late" does NOT mean the move is finished -- it means you are
+    late to it, and joining it returned +0.05R. A "late" reading can still
+    appear on an alert when the trade runs AGAINST the day's move, because that
+    combination is deliberately not gated (best bucket in the replay, +1.36R).
     """
     d = getattr(lv, "decision", None)
     ext = getattr(d, "session_ext", None) if d is not None else None
@@ -162,7 +165,7 @@ def _session_line(lv: ArmedLevel) -> str:
     from config import CONFIG
 
     limit = getattr(CONFIG, "max_session_ext", 0.52)
-    return f"Session: {ext * 100:.0f}% of range spent  ({'open' if ext < limit else 'extended'})"
+    return f"Session: {ext * 100:.0f}% travelled  ({'early' if ext < limit else 'late'})"
 
 
 def _scale_plan(lv: ArmedLevel) -> list[str]:
