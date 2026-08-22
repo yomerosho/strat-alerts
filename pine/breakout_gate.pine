@@ -1,0 +1,227 @@
+//@version=6
+// =============================================================================
+// Breakout Gate Score  --  minimal build
+//
+// Draws ONE line of text and nothing else by default. No history plots, no
+// background shading, no arrows. Everything decorative is opt-in and off.
+//
+// Four gates, tested on 1,372 ten-day-high breakouts across
+// TSLA/NVDA/AMD/META/AMZN/AAPL 2022-2026. Base rate 50.3%. Each gate was kept
+// only because its bootstrapped lift had a 95% CI clear of zero:
+//   1  Gap in the top third of this symbol's own recent gaps      60%
+//   2  Pre-market volume > 1.75x its own 20-day average           64%
+//   3  Opens above the level                                      60%
+//   4  First-15m volume > 3.6x pro-rata average                   60%
+// Score:  0/4 = 43%   1/4 = 48%   2/4 = 51%   3/4 = 60%   4/4 = 71%
+//
+// NOT included -- all tested flat, 95% CI spanning zero: RSI, MACD, FTFC /
+// multi-timeframe alignment, price vs 20/50 SMA, relative strength vs SPY, SPY
+// regime, 52-week-high distance, base tightness, ATR contraction, level touches.
+//
+// On an RTH chart there are no pre-market bars, so gates 1-2 cannot compute and
+// the script falls back to a 2-gate score. That costs almost nothing: 67% vs
+// 71%, a +4.1% difference with a 95% CI of [-5.5%, +14.0%], and it fires nearly
+// twice as often.  2-gate scale:  0/2 = 44%   1/2 = 52%   2/2 = 67%
+//
+// Use 5m or lower. On 15m+ the 09:30-09:45 window cannot resolve and the score
+// is not meaningful -- the readout says so rather than showing a fake number.
+// =============================================================================
+
+indicator("Breakout Gate Score", "GATE", overlay = true)
+
+// ----------------------------------------------------------------- inputs
+lvlLen  = input.int(10, "Level = highest high of the last N sessions", minval = 2, maxval = 60)
+gapPct  = input.float(66.7, "Gap percentile to clear", minval = 50, maxval = 95, group = "Thresholds")
+gapWin  = input.int(60, "Gap percentile window (sessions)", minval = 20, maxval = 250, group = "Thresholds")
+pmMult  = input.float(1.75, "Pre-market volume multiple", minval = 1.0, step = 0.05, group = "Thresholds")
+orMult  = input.float(3.6,  "First-15m volume multiple",  minval = 1.0, step = 0.1,  group = "Thresholds")
+
+tblPos  = input.string("bottom_left", "Readout position", options = ["bottom_left","bottom_center","bottom_right","top_center","top_left","top_right","middle_left","middle_right"], group = "Display")
+txtSize = input.string("normal", "Text size", options = ["tiny","small","normal","large"], group = "Display")
+padRows = input.int(6, "Blank rows above (slide it clear of another table)", minval = 0, maxval = 15, group = "Display")
+showFull= input.bool(false, "Expand to the full breakdown", group = "Display")
+showLvl = input.bool(false, "Draw today's level (a short segment, not history)", group = "Display")
+showMark= input.bool(false, "Mark the bar where the score resolves", group = "Display")
+
+pmOpen  = input.int(240, "Pre-market start (min from midnight)", group = "Session")
+rthOpen = input.int(570, "Regular open",  group = "Session")
+orEnd   = input.int(585, "Opening range end", group = "Session")
+rthCls  = input.int(960, "Regular close", group = "Session")
+
+// ----------------------------------------------------------------- clock
+tmin   = hour(time, syminfo.timezone) * 60 + minute(time, syminfo.timezone)
+inPM   = tmin >= pmOpen  and tmin <  rthOpen
+inOR   = tmin >= rthOpen and tmin <  orEnd
+inRTH  = tmin >= rthOpen and tmin <  rthCls
+newDay = ta.change(time("D")) != 0
+tfOK   = timeframe.isintraday and timeframe.in_seconds() <= 300
+
+// ----------------------------------------------------------------- state
+var float pmVol   = 0.0
+var float pmHigh  = na
+var float pmLast  = na
+var float orVol   = 0.0
+var float orHigh  = na
+var float orLow   = na
+var float orClose = na
+var float rthVol    = 0.0
+var float rthOpenPx = na
+var float rthHigh   = na
+var float rthLast   = na
+
+var array<float> hPmVol  = array.new_float()
+var array<float> hDayVol = array.new_float()
+var array<float> hHigh   = array.new_float()
+var array<float> hClose  = array.new_float()
+var array<float> hGap    = array.new_float()
+
+var float lvl       = na
+var float prevClose = na
+var float avgPmVol  = na
+var float avgDayVol = na
+var float gapThresh = na
+var int   pmDaysSeen = 0
+
+pushCap(a, v, cap) =>
+    array.push(a, v)
+    if array.size(a) > cap
+        array.shift(a)
+
+pct(a, p) =>
+    float out = na
+    int n = array.size(a)
+    if n > 4
+        cp = array.copy(a)
+        array.sort(cp, order.ascending)
+        out := array.get(cp, int(math.min(n - 1, math.max(0, math.round(p / 100.0 * (n - 1))))))
+    out
+
+// ----------------------------------------------------------------- roll the day over
+if newDay and bar_index > 0
+    if rthVol > 0
+        pushCap(hPmVol,  pmVol,   20)
+        pushCap(hDayVol, rthVol,  20)
+        pushCap(hHigh,   rthHigh, 250)
+        pushCap(hClose,  rthLast, 250)
+        if not na(pmLast) and array.size(hClose) > 1
+            pushCap(hGap, (pmLast / array.get(hClose, array.size(hClose) - 2) - 1.0) * 100.0, gapWin)
+    nH = array.size(hHigh)
+    if nH >= lvlLen
+        float mx = na
+        for i = 0 to lvlLen - 1
+            v = array.get(hHigh, nH - 1 - i)
+            mx := na(mx) ? v : math.max(mx, v)
+        lvl := mx
+    prevClose := array.size(hClose) > 0 ? array.get(hClose, array.size(hClose) - 1) : na
+    avgPmVol  := array.size(hPmVol)  >= 10 ? array.avg(hPmVol)  : na
+    avgDayVol := array.size(hDayVol) >= 10 ? array.avg(hDayVol) : na
+    gapThresh := pct(hGap, gapPct)
+    if pmVol > 0 and pmDaysSeen < 10
+        pmDaysSeen += 1
+    pmVol := 0.0
+    pmHigh := na
+    pmLast := na
+    orVol := 0.0
+    orHigh := na
+    orLow := na
+    orClose := na
+    rthVol := 0.0
+    rthOpenPx := na
+    rthHigh := na
+    rthLast := na
+
+// ----------------------------------------------------------------- accumulate
+if inPM
+    pmVol  += volume
+    pmHigh := na(pmHigh) ? high : math.max(pmHigh, high)
+    pmLast := close
+if inRTH
+    rthVol += volume
+    rthOpenPx := na(rthOpenPx) ? open : rthOpenPx
+    rthHigh := na(rthHigh) ? high : math.max(rthHigh, high)
+    rthLast := close
+if inOR
+    orVol  += volume
+    orHigh := na(orHigh) ? high : math.max(orHigh, high)
+    orLow  := na(orLow)  ? low  : math.min(orLow,  low)
+    orClose := close
+
+// ----------------------------------------------------------------- gates
+gapNow    = not na(pmLast) and not na(prevClose) ? (pmLast / prevClose - 1.0) * 100.0 : na
+pmVolX    = not na(avgPmVol) and avgPmVol > 0 ? pmVol / avgPmVol : na
+orProRata = not na(avgDayVol) ? avgDayVol * float(orEnd - rthOpen) / float(rthCls - rthOpen) : na
+orVolX    = not na(orProRata) and orProRata > 0 ? orVol / orProRata : na
+orPos     = not na(orHigh) and orHigh > orLow ? (orClose - orLow) / (orHigh - orLow) : na
+
+g1 = not na(gapNow) and not na(gapThresh) and gapNow >= gapThresh
+g2 = not na(pmVolX) and pmVolX >= pmMult
+g3 = not na(rthOpenPx) and not na(lvl) and rthOpenPx >= lvl
+g4 = not na(orVolX) and orVolX >= orMult
+
+atOpen = tmin >= rthOpen
+orDone = tmin >= orEnd
+
+rthOnly  = bar_index > 500 and pmDaysSeen < 3
+maxScore = rthOnly ? 2 : 4
+score    = rthOnly ? (g3 ? 1 : 0) + (g4 ? 1 : 0) : (g1 ? 1 : 0) + (g2 ? 1 : 0) + (g3 ? 1 : 0) + (g4 ? 1 : 0)
+scoreNow = orDone ? score : atOpen ? (rthOnly ? (g3 ? 1 : 0) : (g1 ? 1 : 0) + (g2 ? 1 : 0)) : 0
+
+// ----------------------------------------------------------------- readout
+f_pos(s) =>
+    switch s
+        "top_left"      => position.top_left
+        "top_center"    => position.top_center
+        "top_right"     => position.top_right
+        "middle_left"   => position.middle_left
+        "middle_right"  => position.middle_right
+        "bottom_left"   => position.bottom_left
+        "bottom_right"  => position.bottom_right
+        => position.bottom_center
+f_size(s) =>
+    s == "tiny" ? size.tiny : s == "small" ? size.small : s == "large" ? size.large : size.normal
+
+winTxt = not orDone ? "" : rthOnly ? (score == 2 ? "67%" : score == 1 ? "52%" : "44%") : (score == 4 ? "71%" : score == 3 ? "60%" : score == 2 ? "51%" : score == 1 ? "48%" : "43%")
+dot(ok, resolved) => resolved ? (ok ? "●" : "○") : "·"
+dots = rthOnly ? dot(g3, atOpen) + dot(g4, orDone) : dot(g1, atOpen) + dot(g2, atOpen) + dot(g3, atOpen) + dot(g4, orDone)
+
+line1 = not tfOK ? "GATE  needs 5m or lower" : "GATE " + (orDone ? str.tostring(score) + "/" + str.tostring(maxScore) : atOpen ? str.tostring(scoreNow) + " pre" : "-") + "  " + dots + (orDone ? "  " + winTxt : "") + (rthOnly ? "  RTH" : "")
+slab = color.new(#0d1117, 8)
+fg   = not tfOK ? #9aa4b2 : not orDone ? #c9d1d9 : score >= maxScore ? #3fdd78 : score == maxScore - 1 ? #4cc9f0 : score == 0 ? #f07167 : #f0a202
+
+var table tb = table.new(f_pos(tblPos), 2, 22, border_width = 0)
+
+if barstate.islast
+    table.clear(tb, 0, 0, 1, 21)
+    // invisible spacers push the readout down past whatever sits above it
+    if padRows > 0
+        for r = 0 to padRows - 1
+            table.cell(tb, 0, r, " ", bgcolor = color.new(color.black, 100), text_size = f_size(txtSize))
+    r0 = padRows
+    table.cell(tb, 0, r0, line1, text_color = fg, bgcolor = slab, text_size = f_size(txtSize), text_halign = text.align_left)
+    if showFull and tfOK
+        hd = slab
+        dm = #8b949e
+        table.cell(tb, 0, r0 + 1, "1 gap",         text_color = dm, bgcolor = hd, text_size = f_size(txtSize), text_halign = text.align_left)
+        table.cell(tb, 1, r0 + 1, rthOnly ? "no ext hrs" : na(gapNow) ? "-" : str.tostring(gapNow, "#.##") + "%", text_color = g1 ? #3fdd78 : #c9d1d9, bgcolor = hd, text_size = f_size(txtSize))
+        table.cell(tb, 0, r0 + 2, "2 premkt vol",  text_color = dm, bgcolor = hd, text_size = f_size(txtSize), text_halign = text.align_left)
+        table.cell(tb, 1, r0 + 2, rthOnly ? "no ext hrs" : na(pmVolX) ? "-" : str.tostring(pmVolX, "#.##") + "x", text_color = g2 ? #3fdd78 : #c9d1d9, bgcolor = hd, text_size = f_size(txtSize))
+        table.cell(tb, 0, r0 + 3, "3 open vs lvl", text_color = dm, bgcolor = hd, text_size = f_size(txtSize), text_halign = text.align_left)
+        table.cell(tb, 1, r0 + 3, na(rthOpenPx) ? "-" : str.tostring(rthOpenPx, format.mintick), text_color = g3 ? #3fdd78 : #c9d1d9, bgcolor = hd, text_size = f_size(txtSize))
+        table.cell(tb, 0, r0 + 4, "4 15m vol",     text_color = dm, bgcolor = hd, text_size = f_size(txtSize), text_halign = text.align_left)
+        table.cell(tb, 1, r0 + 4, na(orVolX) ? "-" : str.tostring(orVolX, "#.##") + "x", text_color = g4 ? #3fdd78 : #c9d1d9, bgcolor = hd, text_size = f_size(txtSize))
+        table.cell(tb, 0, r0 + 5, "level",         text_color = dm, bgcolor = hd, text_size = f_size(txtSize), text_halign = text.align_left)
+        table.cell(tb, 1, r0 + 5, na(lvl) ? "-" : str.tostring(lvl, format.mintick), text_color = dm, bgcolor = hd, text_size = f_size(txtSize))
+
+// today's level only -- a short segment at the right edge, never a history staircase
+var line lvlLine = na
+if showLvl and barstate.islast and not na(lvl)
+    line.delete(lvlLine)
+    lvlLine := line.new(bar_index - 40, lvl, bar_index + 5, lvl, color = color.new(color.orange, 30), width = 1, style = line.style_dashed)
+
+plotshape(showMark and tfOK and orDone and not orDone[1] and score >= maxScore - 1, "Score resolved at 09:45", shape.triangleup, location.belowbar, color.new(color.teal, 20), size = size.tiny)
+
+// ----------------------------------------------------------------- alerts
+alertLvl = rthOnly ? 2 : 3
+alertcondition(orDone and not orDone[1] and score >= alertLvl, "Score at threshold (09:45)", "Breakout gate: score reached threshold at 09:45.")
+alertcondition(orDone and not orDone[1] and score >= maxScore, "All gates passed (09:45)", "Breakout gate: every gate passed at 09:45.")
+alertcondition(atOpen and not atOpen[1] and (g1 ? 1 : 0) + (g2 ? 1 : 0) >= 2, "Both pre-market gates passed", "Gap and pre-market volume both cleared. Watch the open.")

@@ -1,0 +1,209 @@
+﻿//@version=6
+indicator("ORB Levels", overlay=true, max_labels_count=500, max_lines_count=500)
+
+//==============================================================
+// INPUTS
+//==============================================================
+showTodayOnly  = input.bool(false, "Show Only TODAY's Levels")
+
+// ── Opening Range ─────────────────────────────────────────────
+orbDuration    = input.string("5",  "ORB Duration (minutes)",
+                     options=["5", "15", "30"],                 group="Opening Range")
+extendBox      = input.bool(true,  "Extend ORB Box",            group="Opening Range")
+orbBoxColor    = input.color(color.new(#cbf0cc, 85), "ORB Box Color", group="Opening Range")
+orbBoxOpacity  = input.int(85, "ORB Box Opacity (%)", minval=0, maxval=100, group="Opening Range",
+                     tooltip="0 = solid, 100 = fully transparent")
+
+// ── Key Levels ────────────────────────────────────────────────
+showPDH_PDL    = input.bool(true,  "Show Previous Day High/Low (PDH/PDL)",      group="Key Levels")
+pdColor        = input.color(color.new(#f3dc0b, 0),    "PDH/PDL Color",         group="Key Levels")
+
+showPMH_PML    = input.bool(true,  "Show Premarket High/Low (PMH/PML)",         group="Key Levels")
+pmColor        = input.color(color.new(color.blue, 0), "PMH/PML Color",         group="Key Levels")
+pmSesh         = input.session("0400-0930", "Premarket Session (exchange time)", group="Key Levels")
+
+showPWH_PWL    = input.bool(true,  "Show Previous Week High/Low (PWH/PWL)",     group="Key Levels")
+pwColor        = input.color(color.new(color.purple, 0), "PWH/PWL Color",       group="Key Levels")
+
+showPMoH_PMoL  = input.bool(true,  "Show Previous Month High/Low (PMoH/PMoL)",  group="Key Levels")
+pmoColor       = input.color(color.new(color.orange, 0), "PMoH/PMoL Color",     group="Key Levels")
+
+lineStyle      = line.style_dashed
+
+//==============================================================
+// HELPERS
+//==============================================================
+isIntraday = timeframe.isintraday
+
+f_isToday() =>
+    dayofmonth(time) == dayofmonth(timenow) and
+     month(time) == month(timenow) and
+     year(time) == year(timenow)
+
+isToday = f_isToday()
+
+orbEndTime =
+     orbDuration == "5"  ? "0935" :
+     orbDuration == "15" ? "0945" :
+                           "1000"
+crSesh = "0930-" + orbEndTime
+
+//==============================================================
+// PDH / PDL
+//==============================================================
+if showPDH_PDL and isIntraday
+    [pdh, pdl] = request.security(syminfo.tickerid, "D", [high[1], low[1]], lookahead=barmerge.lookahead_on)
+
+    newDayPD = ta.change(time("D")) != 0
+
+    var line  linePDH  = na
+    var line  linePDL  = na
+    var label labelPDH = na
+    var label labelPDL = na
+
+    if newDayPD
+        line.delete(linePDH)
+        line.delete(linePDL)
+        label.delete(labelPDH)
+        label.delete(labelPDL)
+
+        linePDH  := line.new(bar_index, pdh, bar_index + 1, pdh, extend=extend.right, color=pdColor, style=lineStyle)
+        linePDL  := line.new(bar_index, pdl, bar_index + 1, pdl, extend=extend.right, color=pdColor, style=lineStyle)
+        labelPDH := label.new(bar_index, pdh, "PDH", style=label.style_none, textcolor=pdColor, size=size.tiny)
+        labelPDL := label.new(bar_index, pdl, "PDL", style=label.style_none, textcolor=pdColor, size=size.tiny)
+
+//==============================================================
+// PMH / PML  (Premarket)
+//==============================================================
+pm_sesh  = isIntraday and not na(time(timeframe.period, pmSesh))
+pm_start = pm_sesh and not pm_sesh[1]
+newDayPM = ta.change(time("D")) != 0
+
+var float pmh      = na
+var float pml      = na
+var line  linePMH  = na
+var line  linePML  = na
+var label labelPMH = na
+var label labelPML = na
+
+if isIntraday
+    if newDayPM
+        pmh := na
+        pml := na
+        line.delete(linePMH)
+        line.delete(linePML)
+        label.delete(labelPMH)
+        label.delete(labelPML)
+
+    if pm_start
+        pmh := high
+        pml := low
+
+    if pm_sesh
+        pmh := math.max(nz(pmh, high), high)
+        pml := math.min(nz(pml, low), low)
+
+    pm_end = (not pm_sesh) and pm_sesh[1]
+    if showPMH_PML and pm_end and not na(pmh)
+        linePMH  := line.new(bar_index, pmh, bar_index + 1, pmh, extend=extend.right, color=pmColor, style=lineStyle)
+        linePML  := line.new(bar_index, pml, bar_index + 1, pml, extend=extend.right, color=pmColor, style=lineStyle)
+        labelPMH := label.new(bar_index, pmh, "PMH", style=label.style_none, textcolor=pmColor, size=size.tiny)
+        labelPML := label.new(bar_index, pml, "PML", style=label.style_none, textcolor=pmColor, size=size.tiny)
+
+//==============================================================
+// PWH / PWL  (Previous Week)
+//==============================================================
+if showPWH_PWL and isIntraday
+    [pwh, pwl] = request.security(syminfo.tickerid, "W", [high[1], low[1]], lookahead=barmerge.lookahead_on)
+
+    newWeek = ta.change(time("W")) != 0
+
+    var line  linePWH  = na
+    var line  linePWL  = na
+    var label labelPWH = na
+    var label labelPWL = na
+
+    if newWeek
+        line.delete(linePWH)
+        line.delete(linePWL)
+        label.delete(labelPWH)
+        label.delete(labelPWL)
+
+        linePWH  := line.new(bar_index, pwh, bar_index + 1, pwh, extend=extend.right, color=pwColor, style=lineStyle)
+        linePWL  := line.new(bar_index, pwl, bar_index + 1, pwl, extend=extend.right, color=pwColor, style=lineStyle)
+        labelPWH := label.new(bar_index, pwh, "PWH", style=label.style_none, textcolor=pwColor, size=size.tiny)
+        labelPWL := label.new(bar_index, pwl, "PWL", style=label.style_none, textcolor=pwColor, size=size.tiny)
+
+//==============================================================
+// PMoH / PMoL  (Previous Month)
+//==============================================================
+if showPMoH_PMoL and isIntraday
+    [pmoh, pmol] = request.security(syminfo.tickerid, "M", [high[1], low[1]], lookahead=barmerge.lookahead_on)
+
+    newMonth = ta.change(time("M")) != 0
+
+    var line  linePMoH  = na
+    var line  linePMoL  = na
+    var label labelPMoH = na
+    var label labelPMoL = na
+
+    if newMonth
+        line.delete(linePMoH)
+        line.delete(linePMoL)
+        label.delete(labelPMoH)
+        label.delete(labelPMoL)
+
+        linePMoH  := line.new(bar_index, pmoh, bar_index + 1, pmoh, extend=extend.right, color=pmoColor, style=lineStyle)
+        linePMoL  := line.new(bar_index, pmol, bar_index + 1, pmol, extend=extend.right, color=pmoColor, style=lineStyle)
+        labelPMoH := label.new(bar_index, pmoh, "PMoH", style=label.style_none, textcolor=pmoColor, size=size.tiny)
+        labelPMoL := label.new(bar_index, pmol, "PMoL", style=label.style_none, textcolor=pmoColor, size=size.tiny)
+
+//==============================================================
+// OPENING RANGE BOX  (duration-driven)
+//==============================================================
+or_sesh  = isIntraday and not na(time(timeframe.period, crSesh))
+or_start = or_sesh and not or_sesh[1]
+newDayOR = ta.change(time("D")) != 0
+
+var float orh        = na
+var float orl        = na
+var box   orBox      = na
+var int   orStartBar = na
+
+if isIntraday
+    if newDayOR
+        orh := na
+        orl := na
+        box.delete(orBox)
+        orBox := na
+
+    if or_start
+        orStartBar := bar_index 
+        orh := high
+        orl := low
+        if not na(orBox)
+            box.delete(orBox)
+        orBox := box.new(orStartBar, orh, bar_index, orl,
+                     bgcolor=color.new(orbBoxColor, orbBoxOpacity),
+                     border_color=color.new(color.green, 50),
+                     border_width=1)
+
+    if or_sesh
+        orh := math.max(nz(orh, high), high)
+        orl := math.min(nz(orl, low), low)
+        if not na(orBox)
+            box.set_top(orBox, orh)
+            box.set_bottom(orBox, orl)
+            box.set_right(orBox, bar_index)
+
+    if extendBox and not or_sesh and not na(orBox)
+        box.set_right(orBox, bar_index)
+
+//==============================================================
+// showTodayOnly -- hide drawings on non-today bars
+//==============================================================
+if showTodayOnly and not isToday
+    box.delete(orBox)
+    orBox := na
+    line.delete(linePMH),   line.delete(linePML)
+    label.delete(labelPMH), label.delete(labelPML)

@@ -1,0 +1,109 @@
+//@version=6
+// =============================================================================
+// RSI(2) Reversion  --  daily swing, 3-day average hold
+//
+// The only setup in this project's testing that showed a real, stable edge.
+// Daily bars 2016-2026, 15 large-cap tickers, entry AND exit at the NEXT OPEN
+// after the signal (every fill a price that actually traded):
+//
+//   RSI2 < 10, close > 200SMA :  n=1080   69% win   +0.77%/trade  PF 1.82
+//   RSI2 <  5, close > 200SMA :  n= 555   70% win   +0.99%/trade  PF 2.15
+//
+// Why it is a real edge and not a target-shrinking trick: average win +2.51%
+// against average loss -3.01% is a payoff ratio of 0.83, so break-even is a
+// 54.5% win rate. It wins 69%. That 14.5-point margin is the edge.
+// Beats simply holding for the same 4 days (+0.44%, 55%) by +0.33%/trade,
+// 95% CI [+0.05%, +0.61%]. Positive on all 15 tickers, 9 of 11 years.
+//
+// THREE THINGS THAT MATTER MORE THAN THE WIN RATE
+//   1. DO NOT ADD A STOP. A 5% stop cut expectancy from +0.77% to +0.60%.
+//      Mean reversion pays you for sitting through the drawdown; a stop sells
+//      you the low. This script deliberately has no stop input.
+//   2. Worst historical trade -34.2%, and the average loss is BIGGER than the
+//      average win. Size for that tail, never for the 69%.
+//   3. Long-only above the 200SMA, measured across a bull decade. Only 29
+//      trades fired in 2022. It is untested through a sustained bear market.
+//
+// Use on a DAILY chart. Signals print at the close; you act on the next open.
+// =============================================================================
+
+indicator("RSI(2) Reversion", "RSI2", overlay = true)
+
+rsiLen   = input.int(2,   "RSI length",           minval = 1, maxval = 10)
+rsiTh    = input.float(10, "RSI below",           minval = 1, maxval = 40, step = 1)
+trendLen = input.int(200, "Trend filter SMA",     minval = 20)
+exitLen  = input.int(5,   "Exit SMA",             minval = 2)
+holdCap  = input.int(10,  "Time cap (bars)",      minval = 2)
+
+showMk   = input.bool(true,  "Entry / exit markers",  group = "Display")
+showSMA  = input.bool(false, "Plot the two moving averages", group = "Display")
+showTbl  = input.bool(true,  "Readout",               group = "Display")
+tblPos   = input.string("bottom_left", "Readout position", group = "Display",
+     options = ["bottom_left","bottom_center","bottom_right","top_left","top_center","top_right","middle_left","middle_right"])
+txtSize  = input.string("normal", "Text size", group = "Display", options = ["tiny","small","normal","large"])
+
+r2    = ta.rsi(close, rsiLen)
+smaT  = ta.sma(close, trendLen)
+smaX  = ta.sma(close, exitLen)
+tfOK  = timeframe.isdaily
+ready = not na(smaT) and not na(r2)
+
+// ---- position state. Exit is evaluated before entry so a fresh signal on the
+// ---- same bar as an exit is not swallowed.
+var bool holding = false
+var int  held    = 0
+var float entRef = na
+
+exitSig = false
+if holding
+    held += 1
+    if close > smaX or held >= holdCap
+        exitSig := true
+        holding := false
+
+entrySig = ready and not holding and close > smaT and r2 < rsiTh
+if entrySig
+    holding := true
+    held    := 0
+    entRef  := close
+
+plot(showSMA ? smaT : na, "Trend SMA", color.new(#8b949e, 40), 1)
+plot(showSMA ? smaX : na, "Exit SMA",  color.new(#4cc9f0, 30), 1)
+
+plotshape(showMk and tfOK and entrySig, "Entry (buy next open)", shape.triangleup,
+     location.belowbar, #3fdd78, size = size.tiny)
+plotshape(showMk and tfOK and exitSig,  "Exit (sell next open)", shape.triangledown,
+     location.abovebar, #f0a202, size = size.tiny)
+
+f_pos(s) =>
+    switch s
+        "bottom_center" => position.bottom_center
+        "bottom_right"  => position.bottom_right
+        "top_left"      => position.top_left
+        "top_center"    => position.top_center
+        "top_right"     => position.top_right
+        "middle_left"   => position.middle_left
+        "middle_right"  => position.middle_right
+        => position.bottom_left
+f_size(s) =>
+    s == "tiny" ? size.tiny : s == "small" ? size.small : s == "large" ? size.large : size.normal
+
+txt = not tfOK ? "RSI2  use a daily chart" :
+     not ready ? "RSI2  warming up" :
+     holding   ? "RSI2  HOLD d" + str.tostring(held) + "  exit>" + str.tostring(smaX, format.mintick) :
+     close <= smaT ? "RSI2 " + str.tostring(r2, "#.0") + "  below " + str.tostring(trendLen) + "SMA  no trade" :
+     entrySig  ? "RSI2 " + str.tostring(r2, "#.0") + "  BUY NEXT OPEN" :
+     "RSI2 " + str.tostring(r2, "#.0") + "  armed, need <" + str.tostring(rsiTh, "#")
+
+col = not tfOK or not ready ? #9aa4b2 : entrySig ? #3fdd78 : holding ? #4cc9f0 :
+     close <= smaT ? #8b949e : #c9d1d9
+
+var table tb = table.new(f_pos(tblPos), 1, 1, border_width = 0)
+if showTbl and barstate.islast
+    table.cell(tb, 0, 0, txt, text_color = col, bgcolor = color.new(#0d1117, 8),
+         text_size = f_size(txtSize), text_halign = text.align_left)
+
+alertcondition(entrySig, "RSI2 entry -- buy next open",
+     "RSI(2) reversion ENTRY: RSI2 below threshold with price above the 200SMA. Buy the next open. Exit when close crosses back above the 5SMA. No stop by design -- size for a -34% tail, not for the 69% win rate.")
+alertcondition(exitSig, "RSI2 exit -- sell next open",
+     "RSI(2) reversion EXIT: close back above the 5SMA (or time cap hit). Sell the next open.")
