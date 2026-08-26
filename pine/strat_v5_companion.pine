@@ -1,6 +1,6 @@
 //@version=6
 // =============================================================================
-// Strat v5 Companion -- v10
+// Strat v5 Companion — v10
 // -----------------------------------------------------------------------------
 // The on-chart twin of the v5 scanner + the F2D-Deep frozen tracker.
 //
@@ -61,12 +61,12 @@ maxSessExt  = input.float(0.52, "Gate 4: session spent above this %", group = gS
              + "against a counter-move trade -- that was the strongest bucket in the replay.")
 
 gForm = "Formations (what arms a trigger)"
-armInside = input.bool(true,  "Inside bar (x-1-2) -- both edges", group = gForm)
-armF2     = input.bool(true,  "Failed 2 -- mid-bar trap (F2D long / F2U short)", group = gForm,
+armInside = input.bool(true,  "Inside bar (x-1-2) — both edges", group = gForm)
+armF2     = input.bool(true,  "Failed 2 — mid-bar trap (F2D long / F2U short)", group = gForm,
      tooltip = "The scanner's Family B. The FORMING 4H/1D bar pokes through the prior closed "
              + "bar's extreme and price falls back inside: trapped traders. Trigger is the "
              + "prior bar's extreme (a close back through it), stop is the poke extreme. "
-             + "Arms and disarms live within the bar -- exactly like the scanner.")
+             + "Arms and disarms live within the bar — exactly like the scanner.")
 armOut    = input.bool(false, "3-2 outside bar (NOT in the scanner)", group = gForm,
      tooltip = "Extra formation the Telegram pipeline does not alert. Off keeps the chart "
              + "showing only what the scanner can send.")
@@ -120,7 +120,7 @@ showT2      = input.bool(true,  "Mark bar-close through trigger", group = gT2,
              + "timeframe. On a <=15m chart this is the true 15m Tier 2.")
 t2Gated     = input.bool(true,  "  └ only GATED Tier-2 (match scanner)", group = gT2,
      tooltip = "On: a T2 only prints if the setup also passed min risk, nearest rung >= "
-             + "min R, 4H+1D continuity, and FTFC >= min -- what the scanner would alert. "
+             + "min R, 4H+1D continuity, and FTFC >= min — what the scanner would alert. "
              + "Off shows every raw cross (noisy).")
 
 cBull = input.color(color.new(#3fe08a, 0), "Bull", group = "Colors", inline = "c")
@@ -460,7 +460,7 @@ if barstate.islast
 var table tbl = na
 f_row(i, name, d) =>
     table.cell(tbl, 0, i, name, text_color = cDim, bgcolor = #18212c, text_size = tblSize)
-    table.cell(tbl, 1, i, d == 1 ? "▲" : d == -1 ? "▼" : "--",
+    table.cell(tbl, 1, i, d == 1 ? "▲" : d == -1 ? "▼" : "—",
          text_color = d == 1 ? cBull : d == -1 ? cBear : cDim, bgcolor = #18212c, text_size = tblSize)
 
 if showFTFC and barstate.islast
@@ -487,11 +487,11 @@ if showSeq and barstate.islast
     posS = seqPos == "Top Right" ? position.top_right : seqPos == "Top Left" ? position.top_left : seqPos == "Bottom Right" ? position.bottom_right : seqPos == "Bottom Left" ? position.bottom_left : seqPos == "Middle Right" ? position.middle_right : position.middle_left
     if na(seqTbl)
         seqTbl := table.new(posS, 2, 5, border_width = 1)
-    chopTxt = na(_chop) ? "--" : str.tostring(_chop, "#") + (_chop > 61.8 ? " chop" : _chop < 38.2 ? " trend" : " mix")
+    chopTxt = na(_chop) ? "—" : str.tostring(_chop, "#") + (_chop > 61.8 ? " chop" : _chop < 38.2 ? " trend" : " mix")
     chopCol = na(_chop) ? cDim : _chop > 61.8 ? cAmber : _chop < 38.2 ? cBull : cDim
-    volTxt  = na(_volRatio) ? "--" : str.tostring(_volRatio, "#.0") + "× avg"
+    volTxt  = na(_volRatio) ? "—" : str.tostring(_volRatio, "#.0") + "× avg"
     volCol  = na(_volRatio) ? cDim : _volRatio >= 1.5 ? cBull : _volRatio < 0.7 ? cBear : cDim
-    atrTxt  = na(_atrRatio) ? "--" : str.tostring(_atrRatio, "#.0") + "× ATR"
+    atrTxt  = na(_atrRatio) ? "—" : str.tostring(_atrRatio, "#.0") + "× ATR"
     atrCol  = na(_atrRatio) ? cDim : _atrRatio >= 1.2 ? cAmber : _atrRatio < 0.8 ? cDim : color.new(#c4b5fd, 0)
     table.cell(seqTbl, 0, 0, "CHOP", text_color = cDim, bgcolor = #18212c, text_size = tblSize)
     table.cell(seqTbl, 1, 0, chopTxt, text_color = chopCol, bgcolor = #18212c, text_size = tblSize)
@@ -501,7 +501,7 @@ if showSeq and barstate.islast
     table.cell(seqTbl, 1, 2, atrTxt, text_color = atrCol, bgcolor = #18212c, text_size = tblSize)
     // Gate 4 readout: how much of the day is already spent, and which way.
     arrow  = sDir > 0 ? " ↑" : sDir < 0 ? " ↓" : ""
-    extTxt = na(sExt) ? "--" : str.tostring(sExt * 100, "#") + "%" + arrow +
+    extTxt = na(sExt) ? "—" : str.tostring(sExt * 100, "#") + "%" + arrow +
          (sExt >= maxSessExt ? "  late" : "  early")
     extCol = na(sExt) ? cDim : sExt >= maxSessExt ? cBear : cBull
     table.cell(seqTbl, 0, 3, "EXT", text_color = cDim, bgcolor = #18212c, text_size = tblSize)
