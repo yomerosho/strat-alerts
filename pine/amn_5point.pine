@@ -1,0 +1,287 @@
+//@version=6
+// =============================================================================
+// AMN 6-Point Sequence
+//
+// His sequence, bullish (bearish is the exact mirror):
+//   1  swing high
+//   2  higher low
+//   3  higher high
+//   4  higher low that taps a demand zone confirmed on the 1H
+//   5  higher high
+//   6  price returns and SWEEPS the liquidity under point 4,
+//      then a candle CLOSES back above the swept area  -> entry
+//
+// Points 1-5 only QUALIFY the setup. The trade is point 6: the sweep of the
+// point-4 low and the reclaim close above it. That is what the alert fires on.
+//
+// The 1H zone is drawn for reference and point 4 is flagged as in-zone or not.
+// It is deliberately NOT a hard filter - he confirms that zone by eye, and
+// auto-detection would silently drop setups he would take.
+// =============================================================================
+
+indicator("AMN 6-Point Sequence", "AMN 6PT", overlay = true,
+     max_boxes_count = 20, max_labels_count = 120, max_lines_count = 60)
+
+legATR   = input.float(1.5, "Minimum leg, in ATR", minval = 0.2, maxval = 6.0, step = 0.1,
+     tooltip = "A swing confirms when price reverses this many ATR from the running extreme. NOT a bar count: his ES points 3 and 4 are 2 bars apart while points 1 and 2 are 18, so no fixed fractal width can see both. His smallest legs run about 1.5-3 ATR. Lower = more structures.")
+maxWait  = input.int(120, "Bars to wait for the point-6 sweep", minval = 10, maxval = 1000)
+keepN    = input.int(2, "Keep the last N sequences", minval = 1, maxval = 5)
+showZone = input.bool(true, "Show the 1H zone")
+reqZone  = input.bool(false, "Point 4 must tap a 1H zone to arm point 6")
+htfTF    = input.timeframe("60", "Zone timeframe")
+bullCol  = input.color(#3fdd78, "Bullish", inline = "c")
+bearCol  = input.color(#f07167, "Bearish", inline = "c")
+dimCol   = input.color(#8b949e, "Labels",  inline = "c")
+showStruct = input.bool(false, "Show the 1-5 structure")
+
+// ------------------------------------------------------- 1H demand / supply --
+// Order block on the zone timeframe: the last opposing candle that the next
+// candle engulfed clean through.
+f_htfZones() =>
+    var float d1T = na
+    var float d1B = na
+    var float d2T = na
+    var float d2B = na
+    var float s1T = na
+    var float s1B = na
+    var float s2T = na
+    var float s2B = na
+    if close[1] < open[1] and close > high[1]
+        d2T := d1T
+        d2B := d1B
+        d1T := high[1]
+        d1B := low[1]
+    if close[1] > open[1] and close < low[1]
+        s2T := s1T
+        s2B := s1B
+        s1T := high[1]
+        s1B := low[1]
+    [d1T, d1B, d2T, d2B, s1T, s1B, s2T, s2B]
+
+[zd1T, zd1B, zd2T, zd2B, zs1T, zs1B, zs2T, zs2B] = request.security(syminfo.tickerid, htfTF, f_htfZones(),
+     lookahead = barmerge.lookahead_off)
+
+// ------------------------------------------------------------------ swings ---
+var array<float> pxs = array.new<float>()
+var array<int>   bis = array.new<int>()
+var array<int>   tps = array.new<int>()
+
+f_push(p, b, t) =>
+    n = array.size(tps)
+    if n > 0 and array.get(tps, n - 1) == t
+        prev = array.get(pxs, n - 1)
+        if t == 1 ? p > prev : p < prev
+            array.set(pxs, n - 1, p)
+            array.set(bis, n - 1, b)
+    else
+        array.push(pxs, p)
+        array.push(bis, b)
+        array.push(tps, t)
+    while array.size(tps) > 12
+        array.shift(pxs)
+        array.shift(bis)
+        array.shift(tps)
+
+// ATR zigzag. A leg is confirmed by a price reversal of legATR * ATR from the
+// running extreme, so it is scale-free and catches tight pairs a fixed-width
+// fractal cannot.
+atr14  = ta.atr(14)
+minLeg = legATR * atr14
+
+var int   zDir = 0
+var float zExt = na
+var int   zBar = na
+
+if zDir == 0 and not na(minLeg)
+    zDir := 1
+    zExt := high
+    zBar := bar_index
+
+if zDir == 1
+    if high >= zExt
+        zExt := high
+        zBar := bar_index
+    if not na(minLeg) and low < zExt - minLeg
+        f_push(zExt, zBar, 1)
+        zDir := -1
+        zExt := low
+        zBar := bar_index
+else if zDir == -1
+    if low <= zExt
+        zExt := low
+        zBar := bar_index
+    if not na(minLeg) and high > zExt + minLeg
+        f_push(zExt, zBar, -1)
+        zDir := 1
+        zExt := high
+        zBar := bar_index
+
+// ------------------------------------------------- the five-point sequence ---
+// last five pivots must alternate and, ending on a high (bullish):
+//   P3 > P1 and P5 > P3   (higher highs)      P4 > P2   (higher low)
+f_seq() =>
+    int d = 0
+    n = array.size(tps)
+    if n >= 5
+        t5 = array.get(tps, n - 1)
+        a1 = array.get(tps, n - 2) == -t5
+        a2 = array.get(tps, n - 3) == t5
+        a3 = array.get(tps, n - 4) == -t5
+        a4 = array.get(tps, n - 5) == t5
+        if a1 and a2 and a3 and a4
+            v1 = array.get(pxs, n - 5)
+            v2 = array.get(pxs, n - 4)
+            v3 = array.get(pxs, n - 3)
+            v4 = array.get(pxs, n - 2)
+            v5 = array.get(pxs, n - 1)
+            if t5 == 1 and v3 > v1 and v5 > v3 and v4 > v2
+                d := 1
+            if t5 == -1 and v3 < v1 and v5 < v3 and v4 < v2
+                d := -1
+    d
+
+// --------------------------------------------------------------- draw state --
+var label[] labs = array.new<label>()
+var line[]  lns  = array.new<line>()
+var box[]   bxs  = array.new<box>()
+
+f_trim() =>
+    while array.size(labs) > keepN * 6
+        label.delete(array.shift(labs))
+    while array.size(lns) > keepN * 2
+        line.delete(array.shift(lns))
+    while array.size(bxs) > keepN
+        box.delete(array.shift(bxs))
+
+f_tag(bi, px, txt, up, col) =>
+    if showStruct
+        l = label.new(bi, px, txt, style = up ? label.style_label_down : label.style_label_up,
+             color = color.new(color.black, 100), textcolor = col, size = size.small)
+        array.push(labs, l)
+
+// ------------------------------------------------------------ armed setup ----
+var int   aDir   = 0
+var float aLvl   = na
+var float aInv   = na
+var int   aBar   = na
+var bool  aSwept = false
+var float aSwExt = na
+var int   aP5Bar = na
+var line  aLine  = na
+var int   lastEnd  = na
+var bool  aInZone  = false
+
+seq = f_seq()
+n0  = array.size(tps)
+p5b = n0 >= 1 ? array.get(bis, n0 - 1) : na
+// na(aP5Bar) must be handled explicitly: in Pine "x != na" evaluates to na,
+// which is falsy, so without this the first sequence never fires and aP5Bar
+// never gets set - the indicator stays silent forever.
+p1b = n0 >= 5 ? array.get(bis, n0 - 5) : na
+// a new sequence must start at or after the previous one ENDED
+fresh = seq != 0 and (na(aP5Bar) or p5b != aP5Bar) and (na(lastEnd) or (not na(p1b) and p1b >= lastEnd))
+
+if fresh
+    aP5Bar := p5b
+    lastEnd := p5b
+    aDir   := seq
+    aLvl   := array.get(pxs, n0 - 2)
+    aInv   := array.get(pxs, n0 - 4)
+    aBar   := bar_index
+    aSwept := false
+    aSwExt := na
+    col = seq == 1 ? bullCol : bearCol
+    m1T = seq == 1 ? zd1T : zs1T
+    m1B = seq == 1 ? zd1B : zs1B
+    m2T = seq == 1 ? zd2T : zs2T
+    m2B = seq == 1 ? zd2B : zs2B
+    hit1 = not na(m1T) and aLvl <= m1T and aLvl >= m1B
+    hit2 = not na(m2T) and aLvl <= m2T and aLvl >= m2B
+    inZone = hit1 or hit2
+    aInZone := inZone
+    zT = hit1 ? m1T : m2T
+    zB = hit1 ? m1B : m2B
+    for k = 1 to 5
+        i  = n0 - 6 + k
+        bx = array.get(bis, i)
+        py = array.get(pxs, i)
+        up = array.get(tps, i) == 1
+        txt = k == 4 ? (inZone ? "4  in 1H zone" : "4  no 1H zone") : str.tostring(k)
+        f_tag(bx, py, txt, up, k == 4 and inZone ? col : dimCol)
+    if showStruct
+        lref = line.new(array.get(bis, n0 - 2), aLvl, bar_index + 40, aLvl,
+             color = color.new(col, 25), style = line.style_dashed, width = 1)
+        array.push(lns, lref)
+        aLine := lref
+    // only when point 4 actually tapped it. Otherwise this is just the latest 1H
+    // order block sitting at an unrelated price - a random box floating on the chart.
+    // a box outlives its sequence otherwise: boxes trim at keepN, labels at
+    // keepN*8, and only in-zone sequences draw a box at all - so an old zone can
+    // sit on the chart with no sequence attached to it. Clear on every sequence.
+    while array.size(bxs) > 0
+        box.delete(array.shift(bxs))
+    if showStruct and showZone and inZone
+        b = box.new(array.get(bis, n0 - 2), zT, bar_index + 20, zB, border_color = color.new(col, 60),
+             bgcolor = color.new(col, 90), border_width = 1)
+        array.push(bxs, b)
+    // the sweep can already have happened while the zigzag was confirming P5
+    lag = bar_index - array.get(bis, n0 - 1)
+    for k = 0 to math.min(lag, 300)
+        if seq == 1 ? low[k] < aLvl : high[k] > aLvl
+            aSwept := true
+            e = seq == 1 ? low[k] : high[k]
+            aSwExt := na(aSwExt) ? e : (seq == 1 ? math.min(aSwExt, e) : math.max(aSwExt, e))
+    f_trim()
+
+// -------------------------------------------------------- point 6: the trade -
+entry = false
+dirNow = aDir
+if aDir != 0
+    if not na(aLine)
+        line.set_x2(aLine, bar_index + 10)
+    if aDir == 1 and low < aLvl
+        aSwept := true
+        aSwExt := na(aSwExt) ? low : math.min(aSwExt, low)
+    if aDir == -1 and high > aLvl
+        aSwept := true
+        aSwExt := na(aSwExt) ? high : math.max(aSwExt, high)
+    if aSwept and (aDir == 1 ? close > aLvl : close < aLvl)
+        entry := true
+    if (aDir == 1 ? close < aInv : close > aInv) or bar_index - aBar > maxWait
+        aDir   := 0
+        aSwept := false
+
+if entry
+    col = dirNow == 1 ? bullCol : bearCol
+    // drawn directly, not via f_tag, so it survives showStruct being off -
+    // the 1-5 numbers are scaffolding, this label is the signal.
+    // half an ATR clear of the arrow - both were anchored to the same bar
+    // extreme, so the triangle sat on top of the text.
+    off6 = 0.12 * atr14
+    l6 = label.new(bar_index, dirNow == 1 ? low - off6 : high + off6, "sweep + reclaim",
+         style = dirNow == 1 ? label.style_label_up : label.style_label_down,
+         color = color.new(color.black, 100), textcolor = col, size = size.small)
+    array.push(labs, l6)
+    f_trim()
+    // alertcondition() messages are static strings, so the bias marker has to
+    // come from alert(), which takes a dynamic one.
+    bias = dirNow == 1 ? "🟢 Long" : "🔴 Short"
+    alert(bias + " " + syminfo.ticker + " " + timeframe.period +
+         " | AMN 6 point 6" +
+         " | swept " + str.tostring(aLvl, format.mintick) +
+         " | reclaim " + str.tostring(close, format.mintick) +
+         " | stop beyond " + str.tostring(aSwExt, format.mintick),
+         alert.freq_once_per_bar_close)
+    aDir   := 0
+    aSwept := false
+    aSwExt := na
+
+plotshape(entry and dirNow == 1,  "Long entry",  shape.triangleup,
+     location.belowbar, bullCol, size = size.tiny)
+plotshape(entry and dirNow == -1, "Short entry", shape.triangledown,
+     location.abovebar, bearCol, size = size.tiny)
+
+alertcondition(entry, "AMN point 6 - sweep and reclaim",
+     "Point 6 fired: price swept the point-4 liquidity and closed back through it. The 1-5 sequence had already qualified. Stop beyond the sweep extreme.")
+alertcondition(fresh, "AMN 1-5 sequence qualified",
+     "A 1-5 sequence just qualified. Now watching for point 6 - the sweep of the point-4 level and the close back through it. This is NOT an entry yet.")

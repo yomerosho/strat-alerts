@@ -1,0 +1,410 @@
+//@version=6
+indicator("ORB Levels", overlay=true, max_labels_count=500, max_lines_count=500)
+
+//==============================================================
+// INPUTS
+//==============================================================
+showTodayOnly  = input.bool(false, "Show Only TODAY's Levels")
+
+// ── Opening Range ─────────────────────────────────────────────
+orbDuration    = input.string("15", "ORB Duration (minutes)",
+                     options=["5", "15", "30"],                 group="Opening Range")
+extendBox      = input.bool(true,  "Extend ORB Box",            group="Opening Range")
+orbBorderColor = input.color(color.new(color.green, 50), "ORB Border / Label Color", group="Opening Range")
+orbFillColor   = input.color(color.new(color.green, 92), "ORB Box Fill (faint)",     group="Opening Range")
+orbLabelText   = input.string("Today's ORB", "ORB Box Label",   group="Opening Range")
+sessTz         = input.string("America/New_York", "Session Timezone", group="Opening Range",
+                     tooltip="ORB, gate windows, and entry cutoffs are interpreted in this timezone. Keeps the 09:30 ORB correct on futures (MES/ES trade on Chicago exchange time).")
+
+// ── Confirmed Entry (backtested: C2 + vol expand + gate >= 1) ─
+enableSig      = input.bool(true,  "Enable confirmed entry signals", group="Confirmed Entry",
+                     tooltip="Backtested on 15-min ORB, SPY/QQQ/IWM 2022-2026: 2 consecutive closes beyond the prior candle's high/low after the break, entry-bar volume above the prior-6-bar average, Breakout Gate score >= 1. IS 63.5% win / PF 1.40, OOS 62.7% / PF 1.32. Stop = opposite OR level, target = entry + 1x OR range, flat by 15:45.")
+useVolX        = input.bool(true,  "Require volume expansion (entry bar > avg of prior 6)", group="Confirmed Entry")
+useGate        = input.bool(true,  "Require Breakout Gate score", group="Confirmed Entry")
+minGate        = input.int(1, "Min gate score", minval=0, maxval=4, group="Confirmed Entry",
+                     tooltip="Gates: 1 gap size, 2 premarket volume, 3 opens above 10-day high, 4 first-15m volume. On RTH-only charts gates 1-2 cannot compute and the requirement is capped at 2.")
+showSigLabels  = input.bool(false, "Show entry labels with SL / TP", group="Confirmed Entry")
+showRawBreak   = input.bool(true,  "Mark unconfirmed breaks (wait!)", group="Confirmed Entry")
+
+// ── Key Levels ────────────────────────────────────────────────
+showPDH_PDL    = input.bool(true,  "Show Previous Day High/Low (PDH/PDL)",      group="Key Levels")
+pdColor        = input.color(color.new(#f3dc0b, 0),    "PDH/PDL Color",         group="Key Levels")
+
+showPMH_PML    = input.bool(true,  "Show Premarket High/Low (PMH/PML)",         group="Key Levels")
+pmColor        = input.color(color.new(color.blue, 0), "PMH/PML Color",         group="Key Levels")
+pmSesh         = input.session("0400-0930", "Premarket Session (exchange time)", group="Key Levels")
+
+showPWH_PWL    = input.bool(false, "Show Previous Week High/Low (PWH/PWL)",     group="Key Levels")
+pwColor        = input.color(color.new(color.purple, 0), "PWH/PWL Color",       group="Key Levels")
+
+showPMoH_PMoL  = input.bool(false, "Show Previous Month High/Low (PMoH/PMoL)",  group="Key Levels")
+pmoColor       = input.color(color.new(color.orange, 0), "PMoH/PMoL Color",     group="Key Levels")
+
+lineStyle      = line.style_dashed
+
+//==============================================================
+// HELPERS
+//==============================================================
+isIntraday = timeframe.isintraday
+
+f_isToday() =>
+    dayofmonth(time) == dayofmonth(timenow) and
+     month(time) == month(timenow) and
+     year(time) == year(timenow)
+
+isToday = f_isToday()
+
+orbEndTime =
+     orbDuration == "5"  ? "0935" :
+     orbDuration == "15" ? "0945" :
+                           "1000"
+crSesh = "0930-" + orbEndTime
+
+//==============================================================
+// PDH / PDL
+//==============================================================
+if showPDH_PDL and isIntraday
+    [pdh, pdl] = request.security(syminfo.tickerid, "D", [high[1], low[1]], lookahead=barmerge.lookahead_on)
+
+    newDayPD = ta.change(time("D")) != 0
+
+    var line  linePDH  = na
+    var line  linePDL  = na
+    var label labelPDH = na
+    var label labelPDL = na
+
+    if newDayPD
+        line.delete(linePDH)
+        line.delete(linePDL)
+        label.delete(labelPDH)
+        label.delete(labelPDL)
+
+        linePDH  := line.new(bar_index, pdh, bar_index + 1, pdh, extend=extend.right, color=pdColor, style=lineStyle)
+        linePDL  := line.new(bar_index, pdl, bar_index + 1, pdl, extend=extend.right, color=pdColor, style=lineStyle)
+        labelPDH := label.new(bar_index, pdh, "PDH", style=label.style_none, textcolor=pdColor, size=size.tiny)
+        labelPDL := label.new(bar_index, pdl, "PDL", style=label.style_none, textcolor=pdColor, size=size.tiny)
+
+//==============================================================
+// PMH / PML  (Premarket)
+//==============================================================
+pm_sesh  = isIntraday and not na(time(timeframe.period, pmSesh, sessTz))
+pm_start = pm_sesh and not pm_sesh[1]
+newDayPM = ta.change(time("D")) != 0
+
+var float pmh      = na
+var float pml      = na
+var line  linePMH  = na
+var line  linePML  = na
+var label labelPMH = na
+var label labelPML = na
+
+if isIntraday
+    if newDayPM
+        pmh := na
+        pml := na
+        line.delete(linePMH)
+        line.delete(linePML)
+        label.delete(labelPMH)
+        label.delete(labelPML)
+
+    if pm_start
+        pmh := high
+        pml := low
+
+    if pm_sesh
+        pmh := math.max(nz(pmh, high), high)
+        pml := math.min(nz(pml, low), low)
+
+    pm_end = (not pm_sesh) and pm_sesh[1]
+    if showPMH_PML and pm_end and not na(pmh)
+        linePMH  := line.new(bar_index, pmh, bar_index + 1, pmh, extend=extend.right, color=pmColor, style=lineStyle)
+        linePML  := line.new(bar_index, pml, bar_index + 1, pml, extend=extend.right, color=pmColor, style=lineStyle)
+        labelPMH := label.new(bar_index, pmh, "PMH", style=label.style_none, textcolor=pmColor, size=size.tiny)
+        labelPML := label.new(bar_index, pml, "PML", style=label.style_none, textcolor=pmColor, size=size.tiny)
+
+//==============================================================
+// PWH / PWL  (Previous Week)
+//==============================================================
+if showPWH_PWL and isIntraday
+    [pwh, pwl] = request.security(syminfo.tickerid, "W", [high[1], low[1]], lookahead=barmerge.lookahead_on)
+
+    newWeek = ta.change(time("W")) != 0
+
+    var line  linePWH  = na
+    var line  linePWL  = na
+    var label labelPWH = na
+    var label labelPWL = na
+
+    if newWeek
+        line.delete(linePWH)
+        line.delete(linePWL)
+        label.delete(labelPWH)
+        label.delete(labelPWL)
+
+        linePWH  := line.new(bar_index, pwh, bar_index + 1, pwh, extend=extend.right, color=pwColor, style=lineStyle)
+        linePWL  := line.new(bar_index, pwl, bar_index + 1, pwl, extend=extend.right, color=pwColor, style=lineStyle)
+        labelPWH := label.new(bar_index, pwh, "PWH", style=label.style_none, textcolor=pwColor, size=size.tiny)
+        labelPWL := label.new(bar_index, pwl, "PWL", style=label.style_none, textcolor=pwColor, size=size.tiny)
+
+//==============================================================
+// PMoH / PMoL  (Previous Month)
+//==============================================================
+if showPMoH_PMoL and isIntraday
+    [pmoh, pmol] = request.security(syminfo.tickerid, "M", [high[1], low[1]], lookahead=barmerge.lookahead_on)
+
+    newMonth = ta.change(time("M")) != 0
+
+    var line  linePMoH  = na
+    var line  linePMoL  = na
+    var label labelPMoH = na
+    var label labelPMoL = na
+
+    if newMonth
+        line.delete(linePMoH)
+        line.delete(linePMoL)
+        label.delete(labelPMoH)
+        label.delete(labelPMoL)
+
+        linePMoH  := line.new(bar_index, pmoh, bar_index + 1, pmoh, extend=extend.right, color=pmoColor, style=lineStyle)
+        linePMoL  := line.new(bar_index, pmol, bar_index + 1, pmol, extend=extend.right, color=pmoColor, style=lineStyle)
+        labelPMoH := label.new(bar_index, pmoh, "PMoH", style=label.style_none, textcolor=pmoColor, size=size.tiny)
+        labelPMoL := label.new(bar_index, pmol, "PMoL", style=label.style_none, textcolor=pmoColor, size=size.tiny)
+
+//==============================================================
+// OPENING RANGE BOX  (duration-driven, no background)
+//==============================================================
+or_sesh  = isIntraday and not na(time(timeframe.period, crSesh, sessTz))
+or_start = or_sesh and not or_sesh[1]
+newDayOR = ta.change(time("D")) != 0
+
+var float orh        = na
+var float orl        = na
+var box   orBox      = na
+var int   orStartBar = na
+
+if isIntraday
+    if newDayOR
+        orh := na
+        orl := na
+        box.delete(orBox)
+        orBox := na
+
+    if or_start
+        orStartBar := bar_index
+        orh := high
+        orl := low
+        if not na(orBox)
+            box.delete(orBox)
+        orBox := box.new(orStartBar, orh, bar_index, orl,
+                     bgcolor=orbFillColor,
+                     border_color=orbBorderColor,
+                     border_width=1,
+                     text=orbLabelText,
+                     text_color=orbBorderColor,
+                     text_size=10,
+                     text_halign=text.align_right,
+                     text_valign=text.align_center)
+
+    if or_sesh
+        orh := math.max(nz(orh, high), high)
+        orl := math.min(nz(orl, low), low)
+        if not na(orBox)
+            box.set_top(orBox, orh)
+            box.set_bottom(orBox, orl)
+            box.set_right(orBox, bar_index)
+
+    if extendBox and not or_sesh and not na(orBox)
+        box.set_right(orBox, bar_index)
+
+//==============================================================
+// BREAKOUT GATE SCORE  (ported from Breakout Gate Score / GATE)
+// Gates resolve at 09:45. On RTH-only charts gates 1-2 cannot
+// compute and the score falls back to the 2-gate scale (g3+g4).
+//==============================================================
+gTmin  = hour(time, sessTz) * 60 + minute(time, sessTz)
+gInPM  = gTmin >= 240 and gTmin < 570
+gInOR  = gTmin >= 570 and gTmin < 585
+gInRTH = gTmin >= 570 and gTmin < 960
+gNewDay = ta.change(time("D")) != 0
+
+var float gPmVol   = 0.0
+var float gPmLast  = na
+var float gOrVol   = 0.0
+var float gRthVol  = 0.0
+var float gRthOpen = na
+var float gRthHigh = na
+var float gRthLast = na
+
+var array<float> gHPmVol  = array.new_float()
+var array<float> gHDayVol = array.new_float()
+var array<float> gHHigh   = array.new_float()
+var array<float> gHClose  = array.new_float()
+var array<float> gHGap    = array.new_float()
+
+var float gLvl       = na
+var float gPrevClose = na
+var float gAvgPmVol  = na
+var float gAvgDayVol = na
+var float gGapThr    = na
+var int   gPmDaysSeen = 0
+
+gPushCap(a, v, cap) =>
+    array.push(a, v)
+    if array.size(a) > cap
+        array.shift(a)
+
+gPct(a, p) =>
+    float out = na
+    int n = array.size(a)
+    if n > 4
+        cp = array.copy(a)
+        array.sort(cp, order.ascending)
+        out := array.get(cp, int(math.min(n - 1, math.max(0, math.round(p / 100.0 * (n - 1))))))
+    out
+
+if gNewDay and bar_index > 0
+    if gRthVol > 0
+        gPushCap(gHPmVol,  gPmVol,   20)
+        gPushCap(gHDayVol, gRthVol,  20)
+        gPushCap(gHHigh,   gRthHigh, 250)
+        gPushCap(gHClose,  gRthLast, 250)
+        if not na(gPmLast) and array.size(gHClose) > 1
+            gPushCap(gHGap, (gPmLast / array.get(gHClose, array.size(gHClose) - 2) - 1.0) * 100.0, 60)
+    nH = array.size(gHHigh)
+    if nH >= 10
+        float mx = na
+        for i = 0 to 9
+            v = array.get(gHHigh, nH - 1 - i)
+            mx := na(mx) ? v : math.max(mx, v)
+        gLvl := mx
+    gPrevClose := array.size(gHClose) > 0 ? array.get(gHClose, array.size(gHClose) - 1) : na
+    gAvgPmVol  := array.size(gHPmVol)  >= 10 ? array.avg(gHPmVol)  : na
+    gAvgDayVol := array.size(gHDayVol) >= 10 ? array.avg(gHDayVol) : na
+    gGapThr    := gPct(gHGap, 66.7)
+    if gPmVol > 0 and gPmDaysSeen < 10
+        gPmDaysSeen += 1
+    gPmVol  := 0.0
+    gPmLast := na
+    gOrVol  := 0.0
+    gRthVol := 0.0
+    gRthOpen := na
+    gRthHigh := na
+    gRthLast := na
+
+if gInPM
+    gPmVol  += volume
+    gPmLast := close
+if gInRTH
+    gRthVol += volume
+    gRthOpen := na(gRthOpen) ? open : gRthOpen
+    gRthHigh := na(gRthHigh) ? high : math.max(gRthHigh, high)
+    gRthLast := close
+if gInOR
+    gOrVol += volume
+
+gGapNow    = not na(gPmLast) and not na(gPrevClose) ? (gPmLast / gPrevClose - 1.0) * 100.0 : na
+gPmVolX    = not na(gAvgPmVol) and gAvgPmVol > 0 ? gPmVol / gAvgPmVol : na
+gOrProRata = not na(gAvgDayVol) ? gAvgDayVol * 15.0 / 390.0 : na
+gOrVolX    = not na(gOrProRata) and gOrProRata > 0 ? gOrVol / gOrProRata : na
+
+gG1 = not na(gGapNow) and not na(gGapThr) and gGapNow >= gGapThr
+gG2 = not na(gPmVolX) and gPmVolX >= 1.75
+gG3 = not na(gRthOpen) and not na(gLvl) and gRthOpen >= gLvl
+gG4 = not na(gOrVolX) and gOrVolX >= 3.6
+
+gateOrDone = gTmin >= 585
+gRthOnly   = bar_index > 500 and gPmDaysSeen < 3
+gateScore  = gRthOnly ? (gG3 ? 1 : 0) + (gG4 ? 1 : 0)
+             : (gG1 ? 1 : 0) + (gG2 ? 1 : 0) + (gG3 ? 1 : 0) + (gG4 ? 1 : 0)
+
+//==============================================================
+// CONFIRMED ENTRY  (break -> 2 closes beyond prior extreme ->
+//                   volume expansion + gate score)
+//==============================================================
+tfMinutes  = timeframe.in_seconds() / 60
+entryCutoff = 840 - tfMinutes            // entry bar START so its close is <= 14:00
+orEndMin   = orbDuration == "5" ? 575 : orbDuration == "15" ? 585 : 600
+avg6vol    = ta.sma(volume, 6)[1]        // mean volume of the prior 6 bars
+
+var bool brokeUp = false
+var bool brokeDn = false
+var bool firedL  = false
+var bool firedS  = false
+var int  upStk   = 0
+var int  dnStk   = 0
+
+if newDayOR
+    brokeUp := false
+    brokeDn := false
+    firedL  := false
+    firedS  := false
+    upStk   := 0
+    dnStk   := 0
+
+bool longEntry  = false
+bool shortEntry = false
+bool rawBrkUp   = false
+bool rawBrkDn   = false
+
+if isIntraday and enableSig and not na(orh) and not or_sesh and gTmin >= orEndMin and barstate.isconfirmed
+    // break detection window: bar start <= 13:55
+    if gTmin <= 835
+        if not brokeUp and close > orh
+            brokeUp  := true
+            rawBrkUp := true
+        if not brokeDn and close < orl
+            brokeDn  := true
+            rawBrkDn := true
+    // C2 streaks: consecutive closes beyond the prior candle's extreme,
+    // counted from the break bar onward (the break bar itself can count)
+    upStk := brokeUp ? (close > high[1] ? upStk + 1 : 0) : 0
+    dnStk := brokeDn ? (close < low[1]  ? dnStk + 1 : 0) : 0
+
+    volOK   = not useVolX or (not na(avg6vol) and volume > avg6vol)
+    effMin  = gRthOnly ? math.min(minGate, 2) : minGate
+    gateOK  = not useGate or (gateOrDone and gateScore >= effMin)
+
+    if not firedL and brokeUp and upStk >= 2 and close > orh and gTmin <= entryCutoff and volOK and gateOK
+        firedL    := true
+        longEntry := true
+    if not firedS and brokeDn and dnStk >= 2 and close < orl and gTmin <= entryCutoff and volOK and gateOK
+        firedS     := true
+        shortEntry := true
+
+if showSigLabels and longEntry
+    label.new(bar_index, low,
+         "LONG " + str.tostring(close, format.mintick) +
+         "\nSL "  + str.tostring(orl, format.mintick) +
+         "  TP "  + str.tostring(close + (orh - orl), format.mintick),
+         style=label.style_label_up, color=color.new(color.green, 75),
+         textcolor=color.white, size=size.small)
+if showSigLabels and shortEntry
+    label.new(bar_index, high,
+         "SHORT " + str.tostring(close, format.mintick) +
+         "\nSL "   + str.tostring(orh, format.mintick) +
+         "  TP "   + str.tostring(close - (orh - orl), format.mintick),
+         style=label.style_label_down, color=color.new(color.red, 75),
+         textcolor=color.white, size=size.small)
+
+plotshape(enableSig and longEntry,  "Confirmed Long",  shape.triangleup,   location.belowbar, color.new(color.green, 0), size=size.tiny)
+plotshape(enableSig and shortEntry, "Confirmed Short", shape.triangledown, location.abovebar, color.new(color.red, 0),   size=size.tiny)
+plotshape(enableSig and showRawBreak and (rawBrkUp or rawBrkDn), "Break (unconfirmed)", shape.xcross, location.abovebar, color.new(color.gray, 30), size=size.tiny)
+
+//==============================================================
+// ALERTS
+//==============================================================
+alertcondition(longEntry,  "ORB Confirmed LONG",
+     "ORB LONG confirmed on {{ticker}} {{interval}} @ {{close}} -- 2 closes above prior highs, volume + gate passed. Stop = OR low, target = entry + 1x OR range, flat by 15:45.")
+alertcondition(shortEntry, "ORB Confirmed SHORT",
+     "ORB SHORT confirmed on {{ticker}} {{interval}} @ {{close}} -- 2 closes below prior lows, volume + gate passed. Stop = OR high, target = entry - 1x OR range, flat by 15:45.")
+alertcondition(rawBrkUp or rawBrkDn, "ORB Break (unconfirmed -- WAIT)",
+     "ORB break on {{ticker}} @ {{close}} -- NOT confirmed yet. Wait for 2 consecutive closes beyond the prior candle's extreme.")
+
+//==============================================================
+// showTodayOnly -- hide drawings on non-today bars
+//==============================================================
+if showTodayOnly and not isToday
+    box.delete(orBox)
+    orBox := na
+    line.delete(linePMH),   line.delete(linePML)
+    label.delete(labelPMH), label.delete(labelPML)
