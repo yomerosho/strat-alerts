@@ -1,6 +1,6 @@
 //@version=6
 // =============================================================================
-// Strat v5 Companion — v10
+// Strat v5 Companion -- v10
 // -----------------------------------------------------------------------------
 // The on-chart twin of the v5 scanner + the F2D-Deep frozen tracker.
 //
@@ -61,12 +61,12 @@ maxSessExt  = input.float(0.52, "Gate 4: session spent above this %", group = gS
              + "against a counter-move trade -- that was the strongest bucket in the replay.")
 
 gForm = "Formations (what arms a trigger)"
-armInside = input.bool(true,  "Inside bar (x-1-2) — both edges", group = gForm)
-armF2     = input.bool(true,  "Failed 2 — mid-bar trap (F2D long / F2U short)", group = gForm,
+armInside = input.bool(true,  "Inside bar (x-1-2) -- both edges", group = gForm)
+armF2     = input.bool(true,  "Failed 2 -- mid-bar trap (F2D long / F2U short)", group = gForm,
      tooltip = "The scanner's Family B. The FORMING 4H/1D bar pokes through the prior closed "
              + "bar's extreme and price falls back inside: trapped traders. Trigger is the "
              + "prior bar's extreme (a close back through it), stop is the poke extreme. "
-             + "Arms and disarms live within the bar — exactly like the scanner.")
+             + "Arms and disarms live within the bar -- exactly like the scanner.")
 armOut    = input.bool(false, "3-2 outside bar (NOT in the scanner)", group = gForm,
      tooltip = "Extra formation the Telegram pipeline does not alert. Off keeps the chart "
              + "showing only what the scanner can send.")
@@ -106,6 +106,13 @@ seqPos      = input.string("Top Right", "Table position", group = gSeq,
 chopLen     = input.int(14, "Choppiness length", group = gSeq, minval = 2)
 volLen      = input.int(20, "Volume-average length", group = gSeq, minval = 2)
 atrLen      = input.int(14, "ATR length", group = gSeq, minval = 1)
+rvolAlertX  = input.float(1.5, "RVOL alert threshold (x)", group = gSeq, minval = 1.0, step = 0.1,
+     tooltip = "Fires once, at the check time below, if session volume pace is at least this. "
+             + "At 10:30 a 1.5x reading has historically finished the day >=1.5x about 62% of the "
+             + "time and >=1.2x about 91%, against a 6% base rate. It says the day is BUSY, not "
+             + "which way it is going -- RVOL correlates with range, not with direction.")
+rvolAlertMin= input.int(630, "RVOL alert check time (min from midnight)", group = gSeq,
+     tooltip = "630 = 10:30 ET. Earlier is less reliable: 09:45 gives 51% instead of 62%.")
 
 gT2 = "Tier-2 confirmation (arrows)"
 showT2      = input.bool(true,  "Mark bar-close through trigger", group = gT2,
@@ -113,7 +120,7 @@ showT2      = input.bool(true,  "Mark bar-close through trigger", group = gT2,
              + "timeframe. On a <=15m chart this is the true 15m Tier 2.")
 t2Gated     = input.bool(true,  "  └ only GATED Tier-2 (match scanner)", group = gT2,
      tooltip = "On: a T2 only prints if the setup also passed min risk, nearest rung >= "
-             + "min R, 4H+1D continuity, and FTFC >= min — what the scanner would alert. "
+             + "min R, 4H+1D continuity, and FTFC >= min -- what the scanner would alert. "
              + "Off shows every raw cross (noisy).")
 
 cBull = input.color(color.new(#3fe08a, 0), "Bull", group = "Colors", inline = "c")
@@ -172,17 +179,6 @@ f_setup(tf) =>
 lab4 = f_label(h1_4s, l1_4s, h2_4s, l2_4s)      // last CLOSED 4H bar's label
 labD = f_label(h1_Ds, l1_Ds, h2_Ds, l2_Ds)      // last CLOSED 1D bar's label
 
-// --- SEQ table follows the CHART timeframe -----------------------------------
-// 1H / 2H / 4H / 1D charts show their own sequence; anything below 1H floors to
-// the 1H sequence (a 5m "2U - 1 - 2D" is noise). This drives the context table
-// ONLY -- arming still comes from the 4H / 1D nominators above.
-seqTF = timeframe.isintraday and timeframe.in_seconds(timeframe.period) < timeframe.in_seconds("60")
-     ? "60" : timeframe.period
-f_tfName(tf) =>
-    tf == "60" ? "1H" : tf == "120" ? "2H" : tf == "240" ? "4H" :
-     (tf == "D" or tf == "1D") ? "1D" : (tf == "W" or tf == "1W") ? "1W" : tf
-[h1_Cs, l1_Cs, h2_Cs, l2_Cs, h3_Cs, l3_Cs, hf_Cs, lf_Cs] = f_setup(seqTF)
-labC  = f_label(h1_Cs, l1_Cs, h2_Cs, l2_Cs)     // last CLOSED chart-TF bar
 pat4 = h2_4s > h3_4s and l2_4s < l3_4s ? "3-1-2" : (h2_4s > h3_4s or l2_4s < l3_4s) ? "2-1-2" : "1-1-2"
 patD = h2_Ds > h3_Ds and l2_Ds < l3_Ds ? "3-1-2" : (h2_Ds > h3_Ds or l2_Ds < l3_Ds) ? "2-1-2" : "1-1-2"
 
@@ -332,6 +328,47 @@ _volRatio = _volAvg > 0 ? volume / _volAvg : na
 _atr = ta.atr(atrLen)
 _atrRatio = _atr > 0 ? ta.tr(true) / _atr : na
 
+// ---- session clock -----------------------------------------------------------
+// Kept only because the RVOL block below uses it. The PM VOL row that used to
+// live here was removed: pre-market volume tested FLAT as a trade filter (44%
+// entering at the open, 48% at 09:45, against a 46% baseline), so it was a row
+// that never earned its line.
+pmv_tmin  = hour(time, syminfo.timezone) * 60 + minute(time, syminfo.timezone)
+pmv_newD  = ta.change(time("D")) != 0
+
+// ---- session volume pace -----------------------------------------------------
+// Today's cumulative RTH volume against the average cumulative volume at the SAME
+// point of the session over recent days. A linear pro-rata was tried first and is
+// badly biased: volume is U-shaped, so at 10:00 roughly 19% of the day has traded
+// while a linear model credits only 9%, and the row read ~1.8x on an ordinary
+// morning. This version learns the shape per symbol and per timeframe, so 1.0x
+// means "normal for this time of day" at every hour.
+rvp_inRTH = pmv_tmin >= 570 and pmv_tmin < 960
+var float rvp_cur  = 0.0
+var int   rvp_i    = -1
+var array<float> rvp_prof = array.new_float(420, na)
+if pmv_newD
+    rvp_cur := 0.0
+    rvp_i   := -1
+if rvp_inRTH
+    rvp_cur += volume
+    rvp_i   += 1
+rvp_slot  = rvp_i >= 0 and rvp_i < 420 ? rvp_i : -1
+rvp_prior = rvp_slot >= 0 ? array.get(rvp_prof, rvp_slot) : na
+rvp_ratio = rvp_slot >= 0 and not na(rvp_prior) and rvp_prior > 0 ? rvp_cur / rvp_prior : na
+rvp_done  = pmv_tmin >= 960
+// update AFTER reading, so the comparison only ever uses prior sessions
+if barstate.isconfirmed and rvp_slot >= 0
+    array.set(rvp_prof, rvp_slot, na(rvp_prior) ? rvp_cur : rvp_prior * 0.9 + rvp_cur * 0.1)
+rvp_ok      = timeframe.isintraday and not na(rvp_ratio)
+var bool rvp_fired = false
+if pmv_newD
+    rvp_fired := false
+rvp_atCheck = rvp_ok and pmv_tmin >= rvolAlertMin and not rvp_fired
+rvp_fire    = rvp_atCheck and rvp_ratio >= rvolAlertX
+if barstate.isconfirmed and rvp_atCheck
+    rvp_fired := true
+
 // =========================================================== drawing ==========
 var line[]  LNS = array.new<line>()
 var label[] LBS = array.new<label>()
@@ -423,7 +460,7 @@ if barstate.islast
 var table tbl = na
 f_row(i, name, d) =>
     table.cell(tbl, 0, i, name, text_color = cDim, bgcolor = #18212c, text_size = tblSize)
-    table.cell(tbl, 1, i, d == 1 ? "▲" : d == -1 ? "▼" : "—",
+    table.cell(tbl, 1, i, d == 1 ? "▲" : d == -1 ? "▼" : "--",
          text_color = d == 1 ? cBull : d == -1 ? cBear : cDim, bgcolor = #18212c, text_size = tblSize)
 
 if showFTFC and barstate.islast
@@ -449,47 +486,31 @@ var table seqTbl = na
 if showSeq and barstate.islast
     posS = seqPos == "Top Right" ? position.top_right : seqPos == "Top Left" ? position.top_left : seqPos == "Bottom Right" ? position.bottom_right : seqPos == "Bottom Left" ? position.bottom_left : seqPos == "Middle Right" ? position.middle_right : position.middle_left
     if na(seqTbl)
-        seqTbl := table.new(posS, 2, 6, border_width = 1)
-    l2_4 = f_label(h2_4s, l2_4s, h3_4s, l3_4s)
-    l0_4 = f_label(hf_4s, lf_4s, h1_4s, l1_4s)
-    l2_D = f_label(h2_Ds, l2_Ds, h3_Ds, l3_Ds)
-    l0_D = f_label(hf_Ds, lf_Ds, h1_Ds, l1_Ds)
-    c4 = l0_4 == "2U" ? cBull : l0_4 == "2D" ? cBear : l0_4 == "1" ? cAmber : color.new(#c4b5fd, 0)
-    cD2 = l0_D == "2U" ? cBull : l0_D == "2D" ? cBear : l0_D == "1" ? cAmber : color.new(#c4b5fd, 0)
-    // Row 0 = this chart's sequence. Row 1 = the other key HTF for agreement:
-    // 1D normally, or 4H when the chart itself is daily (never duplicated).
-    l2_C = f_label(h2_Cs, l2_Cs, h3_Cs, l3_Cs)
-    l0_C = f_label(hf_Cs, lf_Cs, h1_Cs, l1_Cs)
-    cC   = l0_C == "2U" ? cBull : l0_C == "2D" ? cBear : l0_C == "1" ? cAmber : color.new(#c4b5fd, 0)
-    seqIsD  = seqTF == "D" or seqTF == "1D"
-    nameB   = seqIsD ? "4H" : "1D"
-    l2_B    = seqIsD ? l2_4 : l2_D
-    labB    = seqIsD ? lab4 : labD
-    l0_B    = seqIsD ? l0_4 : l0_D
-    cSeqB   = seqIsD ? c4   : cD2
-    chopTxt = na(_chop) ? "—" : str.tostring(_chop, "#") + (_chop > 61.8 ? " chop" : _chop < 38.2 ? " trend" : " mix")
+        seqTbl := table.new(posS, 2, 5, border_width = 1)
+    chopTxt = na(_chop) ? "--" : str.tostring(_chop, "#") + (_chop > 61.8 ? " chop" : _chop < 38.2 ? " trend" : " mix")
     chopCol = na(_chop) ? cDim : _chop > 61.8 ? cAmber : _chop < 38.2 ? cBull : cDim
-    volTxt  = na(_volRatio) ? "—" : str.tostring(_volRatio, "#.0") + "× avg"
+    volTxt  = na(_volRatio) ? "--" : str.tostring(_volRatio, "#.0") + "× avg"
     volCol  = na(_volRatio) ? cDim : _volRatio >= 1.5 ? cBull : _volRatio < 0.7 ? cBear : cDim
-    atrTxt  = na(_atrRatio) ? "—" : str.tostring(_atrRatio, "#.0") + "× ATR"
+    atrTxt  = na(_atrRatio) ? "--" : str.tostring(_atrRatio, "#.0") + "× ATR"
     atrCol  = na(_atrRatio) ? cDim : _atrRatio >= 1.2 ? cAmber : _atrRatio < 0.8 ? cDim : color.new(#c4b5fd, 0)
-    table.cell(seqTbl, 0, 0, "SEQ " + f_tfName(seqTF), text_color = color.white, bgcolor = #243040, text_size = tblSize)
-    table.cell(seqTbl, 1, 0, l2_C + " - " + labC + " - " + l0_C, text_color = cC, bgcolor = #243040, text_size = tblSize)
-    table.cell(seqTbl, 0, 1, "SEQ " + nameB, text_color = color.white, bgcolor = #243040, text_size = tblSize)
-    table.cell(seqTbl, 1, 1, l2_B + " - " + labB + " - " + l0_B, text_color = cSeqB, bgcolor = #243040, text_size = tblSize)
-    table.cell(seqTbl, 0, 2, "CHOP", text_color = cDim, bgcolor = #18212c, text_size = tblSize)
-    table.cell(seqTbl, 1, 2, chopTxt, text_color = chopCol, bgcolor = #18212c, text_size = tblSize)
-    table.cell(seqTbl, 0, 3, "VOL", text_color = cDim, bgcolor = #18212c, text_size = tblSize)
-    table.cell(seqTbl, 1, 3, volTxt, text_color = volCol, bgcolor = #18212c, text_size = tblSize)
-    table.cell(seqTbl, 0, 4, "ATR", text_color = cDim, bgcolor = #18212c, text_size = tblSize)
-    table.cell(seqTbl, 1, 4, atrTxt, text_color = atrCol, bgcolor = #18212c, text_size = tblSize)
+    table.cell(seqTbl, 0, 0, "CHOP", text_color = cDim, bgcolor = #18212c, text_size = tblSize)
+    table.cell(seqTbl, 1, 0, chopTxt, text_color = chopCol, bgcolor = #18212c, text_size = tblSize)
+    table.cell(seqTbl, 0, 1, "VOL", text_color = cDim, bgcolor = #18212c, text_size = tblSize)
+    table.cell(seqTbl, 1, 1, volTxt, text_color = volCol, bgcolor = #18212c, text_size = tblSize)
+    table.cell(seqTbl, 0, 2, "ATR", text_color = cDim, bgcolor = #18212c, text_size = tblSize)
+    table.cell(seqTbl, 1, 2, atrTxt, text_color = atrCol, bgcolor = #18212c, text_size = tblSize)
     // Gate 4 readout: how much of the day is already spent, and which way.
     arrow  = sDir > 0 ? " ↑" : sDir < 0 ? " ↓" : ""
-    extTxt = na(sExt) ? "—" : str.tostring(sExt * 100, "#") + "%" + arrow +
+    extTxt = na(sExt) ? "--" : str.tostring(sExt * 100, "#") + "%" + arrow +
          (sExt >= maxSessExt ? "  late" : "  early")
     extCol = na(sExt) ? cDim : sExt >= maxSessExt ? cBear : cBull
-    table.cell(seqTbl, 0, 5, "EXT", text_color = cDim, bgcolor = #18212c, text_size = tblSize)
-    table.cell(seqTbl, 1, 5, extTxt, text_color = extCol, bgcolor = #18212c, text_size = tblSize)
+    table.cell(seqTbl, 0, 3, "EXT", text_color = cDim, bgcolor = #18212c, text_size = tblSize)
+    table.cell(seqTbl, 1, 3, extTxt, text_color = extCol, bgcolor = #18212c, text_size = tblSize)
+    // Session volume pace. Green = today is genuinely busy for the time of day.
+    rvpTxt = not timeframe.isintraday ? "intraday only" : not rvp_ok ? "n/a" : str.tostring(rvp_ratio, "#.0") + (rvp_done ? "x day" : "x pace")
+    rvpCol = not rvp_ok ? cDim : rvp_ratio >= 1.5 ? cBull : rvp_ratio >= 1.0 ? color.new(#c4b5fd, 0) : rvp_ratio < 0.7 ? cBear : cDim
+    table.cell(seqTbl, 0, 4, "RVOL", text_color = cDim, bgcolor = #18212c, text_size = tblSize)
+    table.cell(seqTbl, 1, 4, rvpTxt, text_color = rvpCol, bgcolor = #18212c, text_size = tblSize)
 
 // ------------------------------------------------ Tier-2 confirmation ---------
 // A chart-TF close through an armed trigger. Gated (default) = min risk +
@@ -523,6 +544,8 @@ if t2Bear
 
 alertcondition(t2Bull, "Tier-2 bull confirmation", "bar closed through a gated bull trigger")
 alertcondition(t2Bear, "Tier-2 bear confirmation", "bar closed through a gated bear trigger")
+alertcondition(rvp_fire, "RVOL elevated at check time",
+     "Session volume pace is at or above the threshold at the check time. This name is BUSY today: historically ~62% of these finish the day >=1.5x normal volume and ~91% finish >=1.2x, against a 6% base rate. It says nothing about DIRECTION -- RVOL tracks range, not return sign. Use it to confirm a setup you already have, not to go looking for one.")
 alertcondition(deepActive and dSince == 0 and not deepSkip, "F2D-Deep entry day",
      "F2D-Deep long entry window is open")
 
