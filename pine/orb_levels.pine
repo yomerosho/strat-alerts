@@ -330,6 +330,8 @@ var bool brokeUp = false
 var bool brokeDn = false
 var bool firedL  = false
 var bool firedS  = false
+var bool fakedUp = false
+var bool fakedDn = false
 var int  upStk   = 0
 var int  dnStk   = 0
 
@@ -338,6 +340,8 @@ if newDayOR
     brokeDn := false
     firedL  := false
     firedS  := false
+    fakedUp := false
+    fakedDn := false
     upStk   := 0
     dnStk   := 0
 
@@ -345,6 +349,8 @@ bool longEntry  = false
 bool shortEntry = false
 bool rawBrkUp   = false
 bool rawBrkDn   = false
+bool fakeUpEvt  = false
+bool fakeDnEvt  = false
 
 if isIntraday and enableSig and not na(orh) and not or_sesh and gTmin >= orEndMin and barstate.isconfirmed
     // break detection window: bar start <= 13:55
@@ -371,6 +377,15 @@ if isIntraday and enableSig and not na(orh) and not or_sesh and gTmin >= orEndMi
         firedS     := true
         shortEntry := true
 
+    // fakeout: break happened, no confirmed entry yet, and price closed
+    // back inside the range. Context event, once per side per day.
+    if brokeUp and not firedL and not fakedUp and close < orh
+        fakedUp   := true
+        fakeUpEvt := true
+    if brokeDn and not firedS and not fakedDn and close > orl
+        fakedDn   := true
+        fakeDnEvt := true
+
 if showSigLabels and longEntry
     label.new(bar_index, low,
          "LONG " + str.tostring(close, format.mintick) +
@@ -389,6 +404,8 @@ if showSigLabels and shortEntry
 plotshape(enableSig and longEntry,  "Confirmed Long",  shape.triangleup,   location.belowbar, color.new(color.green, 0), size=size.tiny)
 plotshape(enableSig and shortEntry, "Confirmed Short", shape.triangledown, location.abovebar, color.new(color.red, 0),   size=size.tiny)
 plotshape(enableSig and showRawBreak and (rawBrkUp or rawBrkDn), "Break (unconfirmed)", shape.xcross, location.abovebar, color.new(color.gray, 30), size=size.tiny)
+plotshape(enableSig and fakeUpEvt, "Fakeout UP (failed break)",   shape.diamond, location.abovebar, color.new(color.orange, 0), size=size.tiny)
+plotshape(enableSig and fakeDnEvt, "Fakeout DOWN (failed break)", shape.diamond, location.belowbar, color.new(color.orange, 0), size=size.tiny)
 
 //==============================================================
 // ALERTS
@@ -399,6 +416,10 @@ alertcondition(shortEntry, "ORB Confirmed SHORT",
      "ORB SHORT confirmed on {{ticker}} {{interval}} @ {{close}} -- 2 closes below prior lows, volume + gate passed. Stop = OR high, target = entry - 1x OR range, flat by 15:45.")
 alertcondition(rawBrkUp or rawBrkDn, "ORB Break (unconfirmed -- WAIT)",
      "ORB break on {{ticker}} @ {{close}} -- NOT confirmed yet. Wait for 2 consecutive closes beyond the prior candle's extreme.")
+alertcondition(fakeUpEvt, "ORB Fakeout UP (puts context)",
+     "ORB FAKEOUT on {{ticker}} @ {{close}} -- broke above the range and closed back inside. Failed breakout at the highs; put-side context. Do NOT fade blindly -- wait for a confirmed SHORT signal.")
+alertcondition(fakeDnEvt, "ORB Fakeout DOWN (calls context)",
+     "ORB FAKEOUT on {{ticker}} @ {{close}} -- broke below the range and closed back inside. Failed breakdown at the lows; call-side context. Do NOT fade blindly -- wait for a confirmed LONG signal.")
 
 //==============================================================
 // showTodayOnly -- hide drawings on non-today bars
