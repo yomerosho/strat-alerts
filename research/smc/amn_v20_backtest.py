@@ -99,7 +99,7 @@ def signals(df):
     zdir, zext, zbar = 0, np.nan, 0
     aDir = 0; aLvl = aInv = np.nan; aBar = -1
     aSwept = False; aSwExt = np.nan
-    aP5Bar = None; lastEnd = None; aInZone = False
+    aP5Bar = None; lastEnd = None; aInZone = False; aZDist = np.nan
     out = []
 
     for i in range(n):
@@ -137,6 +137,18 @@ def signals(df):
             else:
                 z1 = (zc['s1T'][i], zc['s1B'][i]); z2 = (zc['s2T'][i], zc['s2B'][i])
             aInZone = any((not np.isnan(t)) and (b <= aLvl <= t) for t, b in (z1, z2))
+            # how FAR point 4 is from the nearest zone, in ATR. 0 = inside.
+            # A binary in/out test on a crude detector can hide a real proximity
+            # effect, so measure the distance and let the data speak.
+            _best = np.inf
+            for _t, _b in (z1, z2):
+                if np.isnan(_t):
+                    continue
+                if _b <= aLvl <= _t:
+                    _best = 0.0
+                    break
+                _best = min(_best, min(abs(aLvl - _t), abs(aLvl - _b)))
+            aZDist = (_best / A[i]) if (np.isfinite(_best) and A[i] > 0) else np.nan
             lag = i - bis[-1]
             for k in range(0, min(lag, 300) + 1):
                 j = i - k
@@ -156,6 +168,7 @@ def signals(df):
             if aSwept and ((c[i] > aLvl) if aDir == 1 else (c[i] < aLvl)):
                 d = aDir
                 out.append(dict(i=i, dir=d, entry=c[i], stop=aSwExt, inzone=aInZone,
+                                zdist=aZDist,
                                 m5=F['m5'][i], m15=F['m15'][i], h1=F['h1'][i],
                                 h4=F['h4'][i], d1=F['d1'][i]))
                 aDir, aSwept = 0, False
@@ -185,6 +198,13 @@ def resolve(df, i0, entry, stop, d):
         if t[1.0] < BIG and k > t[1.0] and dn <= 0.0 and t_be == BIG: t_be = k
     endR = (((lastc - e) / R) if d == 1 else ((e - lastc) / R)) - SLIP * e / R
     res = {}
+    # best favourable excursion BEFORE the stop was hit - what a discretionary
+    # trader could actually have taken off the table
+    mfe = 0.0
+    for k in range(i0 + 1, min(t_stop + 1, end)):
+        u = ((h[k] - e) / R) if d == 1 else ((e - l[k]) / R)
+        mfe = max(mfe, u)
+    res['mfe'] = mfe
     for m in TARGETS:
         res['r%g' % m] = -1.0 if (t_stop < BIG and t_stop <= t[m]) else \
             (m - SLIP * e / R if t[m] < BIG else endR)
@@ -219,6 +239,7 @@ for sym in UNIVERSE:
             continue
         ts = df.index[i0]; day = ts.normalize()
         base = dict(sym=sym, ts=ts, day=day.date(), dir=d, inzone=bool(s['inzone']),
+                    zdist=float(s['zdist']),
                     ftfc3=int(s['m5'] == d and s['m15'] == d and s['h1'] == d),
                     ftfc5=int(s['m5'] == d and s['m15'] == d and s['h1'] == d
                               and s['h4'] == d and s['d1'] == d),
